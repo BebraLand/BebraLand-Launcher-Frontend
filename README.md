@@ -27,11 +27,18 @@ When user clicks `Launch`:
 
 Launcher keeps `/api/v1/ws` open while running. If backend shell/CLI creates, deletes, clones, edits RAM, or builds pack while server is running, backend pushes `profiles.changed` and the pack combo updates live.
 
+Pack controls:
+
+- `Reinstall`: downloads Minecraft runtime and managed pack files again, while keeping local user data like `saves`, `screenshots`, `resourcepacks`, `shaderpacks`, options, and server list.
+- `Delete`: removes the whole local instance folder for the selected pack from this computer.
+
 Sync modes:
 
 - default: enforce exact server hash
 - whitelist: download once if missing, then keep user edits and do not delete matching extra local files
 - blacklist: enforce exact server hash even inside whitelist folders
+
+Frontend always protects local user data folders/files from pack cleanup: saves, screenshots, resource packs, shader packs, logs/crash reports, replay recordings, options, and server list.
 
 Launcher saves settings, per-profile RAM overrides, and Azuriom token in `%APPDATA%\BebraLandLauncher\settings.json`. Instance files live in `%APPDATA%\BebraLandLauncher\instances\<profile-slug>`.
 

@@ -28,7 +28,15 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .api import ApiClient
 from .config import DEFAULT_SERVER_URL
-from .runtime import install_mod_loader, instance_dir, launch_minecraft, sync_manifest
+from .runtime import (
+    delete_instance,
+    install_mod_loader,
+    instance_dir,
+    instance_path,
+    launch_minecraft,
+    prepare_reinstall,
+    sync_manifest,
+)
 from .settings import load_settings, save_settings
 from .updater import can_self_replace, download_release, replace_current_exe
 
@@ -185,6 +193,13 @@ class LauncherWindow(QWidget):
         self.launch_button = QPushButton("Launch")
         self.launch_button.clicked.connect(self.launch_selected)
         pack_row.addWidget(self.launch_button)
+        self.reinstall_button = QPushButton("Reinstall")
+        self.reinstall_button.clicked.connect(self.reinstall_selected)
+        pack_row.addWidget(self.reinstall_button)
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.clicked.connect(self.delete_selected)
+        self.delete_button.setStyleSheet("color: #b91c1c;")
+        pack_row.addWidget(self.delete_button)
         root.addLayout(pack_row)
 
         ram_row = QHBoxLayout()
@@ -501,6 +516,65 @@ class LauncherWindow(QWidget):
                 installed_version=installed_version,
                 ram_mb=ram_mb,
             )
+
+        self.run_bg(task)
+
+    def reinstall_selected(self) -> None:
+        slug = self.selected_slug()
+        if not slug:
+            QMessageBox.warning(self, "BebraLand", "Choose pack first")
+            return
+        profile = self.selected_profile() or {}
+        name = profile.get("name") or slug
+        answer = QMessageBox.question(
+            self,
+            "BebraLand reinstall",
+            (
+                f"Reinstall local pack '{name}'?\n\n"
+                "Saves, screenshots, resource packs, shader packs, options, and server list stay. "
+                "Minecraft runtime and managed pack files download again."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.reset_client()
+
+        def task() -> None:
+            self.bridge.log.emit(f"Fetch manifest {slug}")
+            manifest = self.client.latest_manifest(slug)
+            game_dir = prepare_reinstall(manifest, self.bridge.log.emit)
+            install_mod_loader(manifest, game_dir, self.bridge.log.emit, self.bridge.progress.emit)
+            sync_manifest(manifest, self.client.server_url, self.bridge.log.emit, self.bridge.progress.emit)
+            self.bridge.log.emit(f"Reinstalled {slug}")
+
+        self.run_bg(task)
+
+    def delete_selected(self) -> None:
+        slug = self.selected_slug()
+        if not slug:
+            QMessageBox.warning(self, "BebraLand", "Choose pack first")
+            return
+        profile = self.selected_profile() or {}
+        name = profile.get("name") or slug
+        path = instance_path(slug)
+        answer = QMessageBox.question(
+            self,
+            "BebraLand delete",
+            (
+                f"Delete local pack '{name}' from this computer?\n\n"
+                f"This removes everything in:\n{path}\n\n"
+                "This cannot be undone."
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        def task() -> None:
+            delete_instance(slug, self.bridge.log.emit)
 
         self.run_bg(task)
 

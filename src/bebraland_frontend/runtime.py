@@ -3,6 +3,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import shutil
 import subprocess
 import threading
 import time
@@ -27,6 +28,29 @@ SYSTEM_PROTECTED_LOCAL_PATTERNS = [
     "versions/**",
     "runtime/**",
     "runtimes/**",
+]
+USER_PROTECTED_LOCAL_PATTERNS = [
+    "saves/**",
+    "screenshots/**",
+    "resourcepacks/**",
+    "shaderpacks/**",
+    "logs/**",
+    "crash-reports/**",
+    "replay_recordings/**",
+    "options*.txt",
+    "servers.dat",
+    "servers.dat_old",
+    "usercache.json",
+    "launcher_profiles.json",
+    "launcher_accounts.json",
+]
+PROTECTED_LOCAL_PATTERNS = SYSTEM_PROTECTED_LOCAL_PATTERNS + USER_PROTECTED_LOCAL_PATTERNS
+REINSTALL_SYSTEM_PATHS = [
+    "assets",
+    "libraries",
+    "versions",
+    "runtime",
+    "runtimes",
 ]
 
 
@@ -282,7 +306,7 @@ def sha256_file(path: Path) -> str:
 
 def is_system_protected(path: str) -> bool:
     normalized = path.replace("\\", "/")
-    return any(fnmatch.fnmatch(normalized, pattern) for pattern in SYSTEM_PROTECTED_LOCAL_PATTERNS)
+    return any(fnmatch.fnmatch(normalized, pattern) for pattern in PROTECTED_LOCAL_PATTERNS)
 
 
 def matches_pattern(path: str, pattern: str) -> bool:
@@ -309,9 +333,33 @@ def sync_mode_for(path: str, rules: dict[str, Any]) -> str:
     return "enforce"
 
 
-def instance_dir(slug: str) -> Path:
-    path = launcher_data_dir() / "instances" / slug
+def instances_root() -> Path:
+    path = launcher_data_dir() / "instances"
     path.mkdir(parents=True, exist_ok=True)
+    return path.resolve()
+
+
+def instance_path(slug: str) -> Path:
+    root = instances_root()
+    path = root / slug
+    resolved = path.resolve()
+    if resolved == root or root not in resolved.parents:
+        raise ValueError(f"Invalid instance slug: {slug}")
+    return path
+
+
+def instance_dir(slug: str) -> Path:
+    path = instance_path(slug)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def local_instance_path(game_dir: Path, relative_path: str) -> Path:
+    root = game_dir.resolve()
+    path = game_dir / relative_path
+    resolved = path.resolve()
+    if resolved == root or root not in resolved.parents:
+        raise ValueError(f"Invalid local pack path: {relative_path}")
     return path
 
 
@@ -347,6 +395,61 @@ def read_old_manifest(game_dir: Path) -> dict[str, Any] | None:
 def write_manifest(game_dir: Path, manifest: dict[str, Any]) -> None:
     path = state_dir(game_dir) / "manifest.json"
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def remove_local_path(path: Path) -> int:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return 1
+    if path.is_dir():
+        shutil.rmtree(path)
+        return 1
+    return 0
+
+
+def remove_empty_parents(path: Path, stop: Path) -> None:
+    stop_resolved = stop.resolve()
+    current = path.parent
+    while current.resolve() != stop_resolved and stop_resolved in current.resolve().parents:
+        try:
+            current.rmdir()
+        except OSError:
+            return
+        current = current.parent
+
+
+def delete_instance(slug: str, status: Status) -> None:
+    game_dir = instance_path(slug)
+    if not game_dir.exists():
+        status(f"Local pack already deleted: {slug}")
+        return
+    remove_local_path(game_dir)
+    status(f"Deleted local pack: {slug}")
+
+
+def prepare_reinstall(manifest: dict[str, Any], status: Status) -> Path:
+    profile = manifest["profile"]
+    game_dir = instance_dir(profile["slug"])
+    rules = manifest.get("rules") or {}
+    removed = 0
+
+    status(f"Clean Minecraft runtime for {profile['slug']}")
+    for name in REINSTALL_SYSTEM_PATHS:
+        removed += remove_local_path(game_dir / name)
+
+    for item in manifest.get("files", []):
+        rel = str(item["path"]).replace("\\", "/")
+        mode = item.get("mode") or sync_mode_for(rel, rules)
+        if mode == "seed" or is_system_protected(rel):
+            continue
+        target = local_instance_path(game_dir, rel)
+        removed += remove_local_path(target)
+        remove_empty_parents(target, game_dir)
+
+    manifest_path = game_dir / ".bebraland" / "manifest.json"
+    removed += remove_local_path(manifest_path)
+    status(f"Reinstall cleanup done: removed={removed}")
+    return game_dir
 
 
 def download_file(
@@ -417,13 +520,13 @@ def sync_manifest(
 ) -> Path:
     profile = manifest["profile"]
     game_dir = instance_dir(profile["slug"])
-    wanted = {item["path"]: item for item in manifest["files"]}
+    wanted = {str(item["path"]).replace("\\", "/"): item for item in manifest["files"]}
     rules = manifest.get("rules") or {}
     stats = {"checked": len(wanted), "downloaded": 0, "updated": 0, "seeded": 0, "kept": 0, "removed": 0}
     downloads: list[tuple[str, dict[str, Any], Path, str]] = []
 
     for rel, item in wanted.items():
-        target = game_dir / rel
+        target = local_instance_path(game_dir, rel)
         mode = item.get("mode") or sync_mode_for(rel, rules)
         if target.exists():
             if mode == "seed":
