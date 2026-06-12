@@ -1,9 +1,15 @@
 .venv/
 .uv-cache/
 .uv-python/
+.nuitka-cache/
 dist*/
+*.dist/
+*.build/
+*.onefile-build/
 build/
 *.spec
 __pycache__/
 *.pyc
 resources/*.exe
+/.nuitka-cache
+BebraLandLauncher.exe

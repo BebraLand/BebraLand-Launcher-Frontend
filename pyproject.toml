@@ -15,6 +15,7 @@ bebraland-launcher = "bebraland_frontend.app:main"
 
 [project.optional-dependencies]
 build = [
+    "nuitka[onefile]>=2.6.0",
     "pyinstaller>=6.11.0",
 ]
 
