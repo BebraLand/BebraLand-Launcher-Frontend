@@ -16,26 +16,13 @@ from .config import launcher_data_dir
 
 Status = Callable[[str], None]
 Progress = Callable[[int, int, str], None]
-PROTECTED_LOCAL_PATTERNS = [
+SYSTEM_PROTECTED_LOCAL_PATTERNS = [
     ".bebraland/**",
     "assets/**",
     "libraries/**",
     "versions/**",
     "runtime/**",
     "runtimes/**",
-    "downloads/**",
-    "saves/**",
-    "screenshots/**",
-    "logs/**",
-    "crash-reports/**",
-    "launcher_profiles.json",
-    "launcher_accounts.json",
-    "usercache.json",
-    "usernamecache.json",
-    "options.txt",
-    "optionsof.txt",
-    "servers.dat",
-    "servers.dat_old",
 ]
 
 
@@ -47,9 +34,9 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def is_protected(path: str) -> bool:
+def is_system_protected(path: str) -> bool:
     normalized = path.replace("\\", "/")
-    return any(fnmatch.fnmatch(normalized, pattern) for pattern in PROTECTED_LOCAL_PATTERNS)
+    return any(fnmatch.fnmatch(normalized, pattern) for pattern in SYSTEM_PROTECTED_LOCAL_PATTERNS)
 
 
 def matches_pattern(path: str, pattern: str) -> bool:
@@ -155,7 +142,7 @@ def cleanup_extra_files(
         if item.is_dir():
             continue
         rel = item.relative_to(game_dir).as_posix()
-        if rel in wanted or is_protected(rel):
+        if rel in wanted or is_system_protected(rel):
             continue
         if sync_mode_for(rel, rules) == "seed":
             continue

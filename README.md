@@ -28,7 +28,7 @@ When user clicks `Launch`:
 Sync modes:
 
 - default: enforce exact server hash
-- whitelist: download once if missing, then keep user edits
+- whitelist: download once if missing, then keep user edits and do not delete matching extra local files
 - blacklist: enforce exact server hash even inside whitelist folders
 
 Launcher saves settings and Azuriom token in `%APPDATA%\BebraLandLauncher\settings.json`. Instance files live in `%APPDATA%\BebraLandLauncher\instances\<profile-slug>`.
