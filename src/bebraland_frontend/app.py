@@ -50,6 +50,16 @@ RESERVED_SYSTEM_RAM_MB = 1024
 DEFAULT_WINDOW_WIDTH = 900
 DEFAULT_WINDOW_HEIGHT = 600
 WINDOW_RESIZE_MARGIN = 8
+GWL_STYLE = -16
+SWP_NOMOVE = 0x0002
+SWP_NOSIZE = 0x0001
+SWP_NOZORDER = 0x0004
+SWP_FRAMECHANGED = 0x0020
+WS_THICKFRAME = 0x00040000
+WS_MINIMIZEBOX = 0x00020000
+WS_MAXIMIZEBOX = 0x00010000
+WS_SYSMENU = 0x00080000
+WM_NCCALCSIZE = 0x0083
 WM_NCHITTEST = 0x0084
 HTLEFT = 10
 HTRIGHT = 11
@@ -153,6 +163,7 @@ class LauncherWindow(QWidget):
         self.resize(1000, 600)
         self.setMinimumSize(900, 540)
         self._normal_geometry = QRect(self.geometry())
+        self._windows_resize_frame_enabled = False
         register_fonts(self)
 
         self.settings = load_settings()
@@ -211,19 +222,48 @@ class LauncherWindow(QWidget):
         self.quick.rootContext().setContextProperty("controller", self)
         self.quick.setSource(QUrl.fromLocalFile(str(QML_MAIN)))
         layout.addWidget(self.quick)
+        self.enable_windows_resize_frame()
+
+    def showEvent(self, event: Any) -> None:
+        super().showEvent(event)
+        self.enable_windows_resize_frame()
+
+    def enable_windows_resize_frame(self) -> None:
+        if not sys.platform.startswith("win") or self._windows_resize_frame_enabled:
+            return
+        hwnd = int(self.winId())
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_STYLE)
+        style |= WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU
+        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_STYLE, style)
+        ctypes.windll.user32.SetWindowPos(
+            hwnd,
+            0,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+        )
+        self._windows_resize_frame_enabled = True
 
     def nativeEvent(self, event_type: bytes, message: int) -> tuple[bool, int]:
-        if not sys.platform.startswith("win") or self.isMaximized():
+        if not sys.platform.startswith("win"):
             return False, 0
         msg = ctypes.wintypes.MSG.from_address(int(message))
+        if msg.message == WM_NCCALCSIZE and msg.wParam:
+            return True, 0
         if msg.message != WM_NCHITTEST:
+            return False, 0
+        if self.isMaximized():
             return False, 0
         x = ctypes.c_short(msg.lParam & 0xFFFF).value
         y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
         pos = self.mapFromGlobal(QPoint(x, y))
-        left = pos.x() <= WINDOW_RESIZE_MARGIN
+        if pos.x() < 0 or pos.y() < 0 or pos.x() > self.width() or pos.y() > self.height():
+            return False, 0
+        left = pos.x() < WINDOW_RESIZE_MARGIN
         right = pos.x() >= self.width() - WINDOW_RESIZE_MARGIN
-        top = pos.y() <= WINDOW_RESIZE_MARGIN
+        top = pos.y() < WINDOW_RESIZE_MARGIN
         bottom = pos.y() >= self.height() - WINDOW_RESIZE_MARGIN
         if top and left:
             return True, HTTOPLEFT
