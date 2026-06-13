@@ -148,6 +148,7 @@ class Bridge(QObject):
     install_update = Signal(dict)
     replace_update = Signal(object)
     progress = Signal(int, int, str)
+    progress_done = Signal()
     news = Signal(list)
     skin_profile = Signal(dict)
     logged_out = Signal(str)
@@ -196,6 +197,7 @@ class LauncherWindow(QWidget):
         self.bridge.install_update.connect(self.install_update)
         self.bridge.replace_update.connect(replace_current_exe)
         self.bridge.progress.connect(self.set_progress)
+        self.bridge.progress_done.connect(self.clear_progress)
         self.bridge.news.connect(self.set_news)
         self.bridge.skin_profile.connect(self.set_skin_profile)
         self.bridge.logged_out.connect(self.handle_logged_out)
@@ -560,6 +562,13 @@ class LauncherWindow(QWidget):
         self.status_text = label.split(" - ", 1)[0] if label else self.status_text
         self.refresh_state()
 
+    def clear_progress(self) -> None:
+        self.progress_visible = False
+        self.progress_value = 0
+        self.progress_maximum = 100
+        self.progress_text = ""
+        self.refresh_state()
+
     def set_profiles(self, profiles: list[dict[str, Any]]) -> None:
         self.profiles = profiles
         if not self.selected_profile_slug and profiles:
@@ -885,6 +894,7 @@ class LauncherWindow(QWidget):
                 minecraft_profile=self.minecraft_profile,
                 window_settings=self.window_state(),
             )
+            self.bridge.progress_done.emit()
 
         self.run_bg(task)
 
@@ -918,6 +928,7 @@ class LauncherWindow(QWidget):
                 selected_optional_mod_ids=selected_optional_mod_ids,
             )
             self.bridge.log.emit(f"Reinstalled {slug}")
+            self.bridge.progress_done.emit()
 
         self.run_bg(task)
 
