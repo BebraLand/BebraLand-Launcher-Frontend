@@ -486,6 +486,30 @@ class LauncherWindow(QWidget):
                     resolved.discard(conflict_id)
         return resolved
 
+    def remove_optional_mod_with_dependents(
+        self,
+        mods: list[dict[str, Any]],
+        selected: set[str],
+        disabled_id: str,
+    ) -> set[str]:
+        mod_map = {self.optional_mod_id(mod): mod for mod in mods if self.optional_mod_id(mod)}
+        disabled = {disabled_id.strip()}
+        if not disabled_id.strip():
+            return {mod_id for mod_id in selected if mod_id in mod_map}
+
+        changed = True
+        while changed:
+            changed = False
+            for mod_id in list(selected):
+                if mod_id in disabled or mod_id not in mod_map:
+                    continue
+                requires = {str(required_id).strip() for required_id in mod_map[mod_id].get("requires") or []}
+                if requires & disabled:
+                    disabled.add(mod_id)
+                    changed = True
+
+        return {mod_id for mod_id in selected if mod_id in mod_map and mod_id not in disabled}
+
     def selected_optional_mod_ids(self, profile: dict[str, Any] | None = None) -> set[str]:
         profile = profile or self.selected_profile()
         if not profile:
@@ -829,19 +853,23 @@ class LauncherWindow(QWidget):
 
     @Slot(str, bool)
     def toggleOptionalMod(self, mod_id: str, checked: bool) -> None:
+        mod_id = str(mod_id).strip()
+        if not mod_id:
+            return
         profile = self.selected_profile()
         if not profile:
             return
+        mods = self.optional_mods_for_profile(profile)
         selected = self.selected_optional_mod_ids(profile)
         if checked:
             selected.add(mod_id)
-            selected = self.resolve_optional_mod_ids(self.optional_mods_for_profile(profile), selected)
+            selected = self.resolve_optional_mod_ids(mods, selected)
         else:
-            selected.discard(mod_id)
+            selected = self.remove_optional_mod_with_dependents(mods, selected, mod_id)
         slug = str(profile.get("slug") or "")
         self.optional_mod_settings()[slug] = {
             self.optional_mod_id(mod): self.optional_mod_id(mod) in selected
-            for mod in self.optional_mods_for_profile(profile)
+            for mod in mods
             if self.optional_mod_id(mod)
         }
         save_settings(self.settings)
