@@ -49,6 +49,10 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Setup Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
       - name: Build EXE
         shell: cmd
         run: build_frontend.bat
@@ -63,11 +67,23 @@ jobs:
             --exe "dist\BebraLandLauncher.exe" `
             --output "dist\latest.json"
 
+      - name: Build setup.exe
+        shell: pwsh
+        run: |
+          $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
+          $isccPath = if ($iscc) { $iscc.Source } else { "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          if (-not (Test-Path -LiteralPath $isccPath)) {
+            throw "ISCC.exe not found: $isccPath"
+          }
+          & $isccPath "installer\BebraLandLauncher.iss"
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           name: BebraLand Launcher ${{ env.APP_VERSION }}
           files: |
+            dist/setup.exe
             dist/BebraLandLauncher.exe
+            dist/BebraLandUpdater.exe
             dist/latest.json

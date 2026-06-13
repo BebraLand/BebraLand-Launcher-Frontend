@@ -68,11 +68,26 @@ Old PowerShell helper still works:
 .\scripts\build_exe.ps1
 ```
 
-Output: `dist\BebraLandLauncher.exe`.
+Output:
+
+- `dist\BebraLandLauncher.exe`
+- `dist\BebraLandUpdater.exe`
+
+## Build setup.exe
+
+Install [Inno Setup 6](https://jrsoftware.org/isinfo.php), then run:
+
+```powershell
+.\build_setup.bat
+```
+
+Output: `dist\setup.exe`.
+
+The installer defaults to `%LOCALAPPDATA%\Programs\BebraLand Launcher`, lets the user choose another folder, installs `BebraLandLauncher.exe` and `BebraLandUpdater.exe`, creates Desktop and Start Menu shortcuts, and adds an uninstaller.
 
 ## Update flow
 
-Release builds are one-file Windows EXEs. No separate updater is shipped.
+Release builds ship two one-file Windows EXEs: `BebraLandLauncher.exe` and `BebraLandUpdater.exe`. The installer puts both in the selected install folder.
 
 On start launcher downloads `latest.json` from GitHub Releases:
 
@@ -85,13 +100,13 @@ On start launcher downloads `latest.json` from GitHub Releases:
 }
 ```
 
-If `version` is newer than the bundled launcher version, the launcher updates automatically, downloads the new EXE into `%APPDATA%\BebraLandLauncher\updates`, verifies `sha256`, then starts that downloaded EXE in updater mode:
+If `version` is newer than the bundled launcher version, the launcher updates automatically, downloads the new EXE into `%APPDATA%\BebraLandLauncher\updates`, verifies `sha256`, then starts `BebraLandUpdater.exe` from the install folder:
 
 ```text
-BebraLandLauncher.exe --apply-update --target <old-exe> --pid <old-pid>
+BebraLandUpdater.exe --install-update --source <downloaded-exe> --target <old-exe> --pid <old-pid>
 ```
 
-The downloaded EXE waits for the old launcher to exit, copies itself over the old path through a temporary `.new` file, removes that temporary file on failure, and starts the updated launcher. It does not leave a `.bak` file. The normal launcher cleans `%APPDATA%\BebraLandLauncher\updates` on startup and before downloading another update.
+The updater waits for the old launcher to exit, copies the downloaded launcher over the old path through a temporary `.new` file, removes that temporary file on failure, and starts the updated launcher. It does not leave a `.bak` file. If `BebraLandUpdater.exe` is missing, the downloaded launcher can still run the old `--apply-update` helper mode as fallback. The normal launcher cleans `%APPDATA%\BebraLandLauncher\updates` on startup and before downloading another update.
 
 Dev builds have no update channel unless `BEBRALAND_UPDATE_MANIFEST_URL` is set. In dev mode, launcher downloads the update but does not replace itself.
 
@@ -108,14 +123,15 @@ git push origin v0.2.0
 
 Or run the `Release launcher` workflow manually and enter version like `0.2.0`.
 
-GitHub Actions will:
+GitHub Actions should:
 
 1. install uv-managed Python 3.13;
-2. build `dist\BebraLandLauncher.exe`;
-3. create `dist\latest.json` with SHA256;
-4. publish both files to GitHub Release.
+2. build `dist\BebraLandLauncher.exe` and `dist\BebraLandUpdater.exe`;
+3. create `dist\latest.json` with SHA256 for `BebraLandLauncher.exe`;
+4. build `dist\setup.exe`;
+5. publish `setup.exe`, `BebraLandLauncher.exe`, `BebraLandUpdater.exe`, and `latest.json` to GitHub Release.
 
-Players download only `BebraLandLauncher.exe` from the latest release. Future release builds auto-check:
+Players download `setup.exe` from the latest release. Future release builds auto-check:
 
 ```text
 https://github.com/<owner>/<repo>/releases/latest/download/latest.json

@@ -29,5 +29,10 @@ echo Build BebraLandLauncher.exe...
 uv run pyinstaller --noconfirm BebraLandLauncher.spec
 if errorlevel 1 exit /b %ERRORLEVEL%
 
+echo Build BebraLandUpdater.exe...
+uv run pyinstaller --noconfirm BebraLandUpdater.spec
+if errorlevel 1 exit /b %ERRORLEVEL%
+
 echo.
 echo Done: %CD%\dist\BebraLandLauncher.exe
+echo Done: %CD%\dist\BebraLandUpdater.exe

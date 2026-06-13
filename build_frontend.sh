@@ -25,5 +25,8 @@ uv run python scripts/write_build_info.py
 echo "Build launcher..."
 uv run pyinstaller --noconfirm BebraLandLauncher.spec
 
+echo "Build updater..."
+uv run pyinstaller --noconfirm BebraLandUpdater.spec
+
 echo
 echo "Done: $PWD/dist"

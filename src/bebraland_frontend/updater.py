@@ -18,6 +18,8 @@ from .config import launcher_data_dir
 
 Status = Callable[[str], None]
 UPDATE_HELPER_FLAG = "--apply-update"
+INSTALLED_UPDATER_FLAG = "--install-update"
+UPDATER_EXE_NAME = "BebraLandUpdater.exe"
 UPDATE_WAIT_SECONDS = 60
 
 
@@ -138,6 +140,29 @@ def can_self_replace() -> bool:
     return bool(getattr(sys, "frozen", False)) and os.name == "nt"
 
 
+def detached_creationflags() -> int:
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+    return creationflags
+
+
+def launch_detached(command: list[str], cwd: Path) -> None:
+    subprocess.Popen(
+        command,
+        cwd=str(cwd),
+        close_fds=True,
+        creationflags=detached_creationflags(),
+    )
+
+
+def installed_updater_path(current: Path) -> Path | None:
+    updater = current.with_name(UPDATER_EXE_NAME)
+    if updater.exists() and updater.resolve() != current:
+        return updater.resolve()
+    return None
+
+
 def replace_current_exe(downloaded: Path) -> None:
     if not can_self_replace():
         raise RuntimeError("Self-update works only for frozen Windows EXE")
@@ -147,22 +172,33 @@ def replace_current_exe(downloaded: Path) -> None:
     if downloaded == current:
         raise RuntimeError("Downloaded update cannot replace itself")
 
-    creationflags = 0
-    if os.name == "nt":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-    subprocess.Popen(
-        [
-            str(downloaded),
-            UPDATE_HELPER_FLAG,
-            "--target",
-            str(current),
-            "--pid",
-            str(os.getpid()),
-        ],
-        cwd=str(current.parent),
-        close_fds=True,
-        creationflags=creationflags,
-    )
+    updater = installed_updater_path(current)
+    if updater:
+        launch_detached(
+            [
+                str(updater),
+                INSTALLED_UPDATER_FLAG,
+                "--source",
+                str(downloaded),
+                "--target",
+                str(current),
+                "--pid",
+                str(os.getpid()),
+            ],
+            current.parent,
+        )
+    else:
+        launch_detached(
+            [
+                str(downloaded),
+                UPDATE_HELPER_FLAG,
+                "--target",
+                str(current),
+                "--pid",
+                str(os.getpid()),
+            ],
+            current.parent,
+        )
     raise SystemExit(0)
 
 
@@ -195,8 +231,8 @@ def wait_for_process_exit(pid: int, timeout_seconds: int = UPDATE_WAIT_SECONDS) 
     raise TimeoutError("Old launcher did not exit before update timeout")
 
 
-def apply_downloaded_update(target: Path, old_pid: int, relaunch: bool = True) -> None:
-    source = Path(sys.executable).resolve()
+def apply_update_file(source: Path, target: Path, old_pid: int, relaunch: bool = True) -> None:
+    source = source.resolve()
     target = target.resolve()
     if source == target:
         raise RuntimeError("Update source and target are the same file")
@@ -213,10 +249,11 @@ def apply_downloaded_update(target: Path, old_pid: int, relaunch: bool = True) -
         raise
 
     if relaunch:
-        creationflags = 0
-        if os.name == "nt":
-            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-        subprocess.Popen([str(target)], cwd=str(target.parent), close_fds=True, creationflags=creationflags)
+        launch_detached([str(target)], target.parent)
+
+
+def apply_downloaded_update(target: Path, old_pid: int, relaunch: bool = True) -> None:
+    apply_update_file(Path(sys.executable), target, old_pid, relaunch=relaunch)
 
 
 def run_update_helper_from_cli(argv: list[str] | None = None) -> bool:
@@ -232,3 +269,23 @@ def run_update_helper_from_cli(argv: list[str] | None = None) -> bool:
     args, _unknown = parser.parse_known_args(argv)
     apply_downloaded_update(Path(args.target), args.pid, relaunch=not args.no_relaunch)
     return True
+
+
+def run_installed_updater_from_cli(argv: list[str] | None = None) -> bool:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if INSTALLED_UPDATER_FLAG not in argv:
+        return False
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(INSTALLED_UPDATER_FLAG, action="store_true")
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--target", required=True)
+    parser.add_argument("--pid", type=int, default=0)
+    parser.add_argument("--no-relaunch", action="store_true")
+    args, _unknown = parser.parse_known_args(argv)
+    apply_update_file(Path(args.source), Path(args.target), args.pid, relaunch=not args.no_relaunch)
+    return True
+
+
+def updater_main() -> None:
+    run_installed_updater_from_cli()

@@ -6,3 +6,4 @@ uv python install 3.13
 uv sync --extra build
 uv run python scripts\write_build_info.py
 uv run pyinstaller --noconfirm BebraLandLauncher.spec
+uv run pyinstaller --noconfirm BebraLandUpdater.spec
