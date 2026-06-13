@@ -61,7 +61,7 @@ Rectangle {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.leftMargin: root.s.authenticated ? 130 : 20
+        anchors.leftMargin: 0
         anchors.rightMargin: 150
         height: 44
         acceptedButtons: Qt.LeftButton
