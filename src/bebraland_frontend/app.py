@@ -161,7 +161,7 @@ class LauncherWindow(QWidget):
         self.setWindowTitle("BebraLand Launcher")
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.resize(1000, 600)
-        self.setMinimumSize(900, 540)
+        self.setMinimumSize(1000, 600)
         self._normal_geometry = QRect(self.geometry())
         self._windows_resize_frame_enabled = False
         register_fonts(self)
