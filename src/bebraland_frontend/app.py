@@ -19,7 +19,7 @@ from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QVBoxLayout, QWidget
 
 from . import __version__
-from .api import ApiClient, absolute_url
+from .api import ApiClient, WebSocketApiError, absolute_url
 from .config import DEFAULT_SERVER_URL, build_update_id, launcher_data_dir, platform_id, update_manifest_url
 from .runtime import (
     delete_instance,
@@ -78,6 +78,31 @@ APP_ICON_PATH = GML_IMAGES_DIR / "logo.ico"
 def strip_html(value: Any) -> str:
     text = re.sub(r"<[^>]+>", " ", str(value or ""))
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def is_two_factor_required_error(exc: Exception) -> bool:
+    if not isinstance(exc, WebSocketApiError):
+        return False
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    reason = str(detail.get("reason") or "").lower()
+    message = str(detail.get("message") or "").lower()
+    details = str(detail.get("details") or "").lower()
+    text = " ".join((reason, message, details))
+    return (
+        reason in {"2fa", "two_factor", "totp"}
+        or "2fa" in text
+        or "two-factor" in text
+        or "two factor" in text
+    ) and ("missing" in text or "required" in text or reason in {"2fa", "two_factor", "totp"})
+
+
+def auth_error_message(exc: Exception) -> str:
+    if isinstance(exc, WebSocketApiError) and isinstance(exc.detail, dict):
+        message = str(exc.detail.get("message") or exc.detail.get("reason") or exc)
+        if "missing" in message.lower() and is_two_factor_required_error(exc):
+            return "2FA code required"
+        return message
+    return str(exc)
 
 
 def detect_system_ram_mb() -> int | None:
@@ -883,12 +908,24 @@ class LauncherWindow(QWidget):
             self.login_status = "Login and password required"
             self.refresh_state()
             return
+        if self.two_factor_visible and not code:
+            self.login_status = "Enter 2FA code"
+            self.refresh_state()
+            return
         self._last_login_email = email
         self._last_login_password = password
         self.reset_client()
 
         def task() -> None:
-            payload = self.client.azuriom_login(email, password, code or None)
+            try:
+                payload = self.client.azuriom_login(email, password, code or None)
+            except Exception as exc:
+                if not code and is_two_factor_required_error(exc):
+                    message = auth_error_message(exc) or "2FA code required"
+                    self.bridge.log.emit(message)
+                    self.bridge.two_factor.emit(message)
+                    return
+                raise
             if payload.get("status") == "pending":
                 message = payload.get("message") or "2FA code required"
                 self.bridge.log.emit(message)
