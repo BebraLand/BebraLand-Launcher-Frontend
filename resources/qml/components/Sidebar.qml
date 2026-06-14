@@ -21,14 +21,13 @@ Item {
         return state.assetsUrl + "/Images/logo.svg"
     }
 
-    Image {
+    SharpImage {
         anchors.top: parent.top
         anchors.topMargin: 28
         anchors.horizontalCenter: parent.horizontalCenter
         width: 38
         height: 38
         source: state.assetsUrl + "/Images/logo.svg"
-        fillMode: Image.PreserveAspectFit
     }
 
     Column {
@@ -80,13 +79,11 @@ Item {
                             return dx * dx + dy * dy <= r * r
                         }
 
-                        Image {
+                        SharpImage {
                             anchors.centerIn: parent
                             width: 32
                             height: 32
                             source: root.iconFor(modelData)
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
                         }
 
                         MouseArea {

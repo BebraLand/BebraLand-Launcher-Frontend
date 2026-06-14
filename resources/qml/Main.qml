@@ -36,13 +36,13 @@ Rectangle {
         }
     }
 
-    Image {
+    SharpImage {
         anchors.fill: parent
         source: root.currentPage === "home" && root.s.selectedProfile && root.s.selectedProfile.background_url
                 ? root.s.selectedProfile.background_url
                 : root.s.defaultBackgroundUrl
         fillMode: Image.PreserveAspectCrop
-        asynchronous: true
+        renderScale: 2
         cache: false
     }
 

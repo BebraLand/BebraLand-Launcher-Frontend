@@ -18,12 +18,11 @@ Item {
             anchors.fill: parent
             spacing: 20
 
-            Image {
+            SharpImage {
                 width: 96
                 height: 72
                 anchors.horizontalCenter: parent.horizontalCenter
                 source: root.state.assetsUrl + "/Images/logo.svg"
-                fillMode: Image.PreserveAspectFit
             }
 
             Rectangle {

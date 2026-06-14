@@ -78,14 +78,11 @@ Item {
         anchors.centerIn: parent
         spacing: root.iconSource !== "" && root.text !== "" ? root.gap : 0
 
-        Image {
+        SharpImage {
             visible: root.iconSource !== ""
             source: root.iconSource
             width: root.iconSize
             height: root.iconSize
-            sourceSize.width: root.iconSize
-            sourceSize.height: root.iconSize
-            fillMode: Image.PreserveAspectFit
             opacity: root.enabled ? 1 : 0.5
         }
 

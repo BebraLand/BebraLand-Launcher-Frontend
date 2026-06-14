@@ -41,11 +41,10 @@ Item {
 
                 Row {
                     spacing: 10
-                    Image {
+                    SharpImage {
                         width: 28
                         height: 28
                         source: root.state.assetsUrl + "/Images/folder.svg"
-                        fillMode: Image.PreserveAspectFit
                     }
                     Text {
                         text: "Mods"
@@ -88,11 +87,10 @@ Item {
                     anchors.fill: parent
                     spacing: 18
 
-                    Image {
+                    SharpImage {
                         width: 48
                         height: 48
                         source: root.state.assetsUrl + "/Images/folder.svg"
-                        fillMode: Image.PreserveAspectFit
                         opacity: 0.7
                     }
 

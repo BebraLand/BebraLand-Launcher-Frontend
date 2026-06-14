@@ -75,12 +75,11 @@ Item {
                 radius: 8
                 color: theme.primary
 
-                Image {
+                SharpImage {
                     anchors.centerIn: parent
                     width: 32
                     height: 32
                     source: root.state.assetsUrl + "/Images/logo.svg"
-                    fillMode: Image.PreserveAspectFit
                 }
             }
 
@@ -253,12 +252,11 @@ Item {
                         width: 43
                         color: "transparent"
 
-                        Image {
+                        SharpImage {
                             anchors.centerIn: parent
                             width: 18
                             height: 18
                             source: root.state.assetsUrl + "/Images/down.svg"
-                            fillMode: Image.PreserveAspectFit
                         }
                     }
 

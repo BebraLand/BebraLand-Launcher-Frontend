@@ -56,11 +56,10 @@ Item {
 
                 Row {
                     spacing: 10
-                    Image {
+                    SharpImage {
                         width: 28
                         height: 28
                         source: root.state.assetsUrl + "/Images/ram.svg"
-                        fillMode: Image.PreserveAspectFit
                     }
                     Text {
                         text: "Settings RAM"
@@ -167,11 +166,10 @@ Item {
 
                     Row {
                         spacing: 10
-                        Image {
+                        SharpImage {
                             width: 28
                             height: 28
                             source: root.state.assetsUrl + "/Images/window.svg"
-                            fillMode: Image.PreserveAspectFit
                         }
                         Text {
                             text: "Window size"
@@ -236,11 +234,10 @@ Item {
 
                     Row {
                         spacing: 10
-                        Image {
+                        SharpImage {
                             width: 28
                             height: 28
                             source: root.state.assetsUrl + "/Images/folder.svg"
-                            fillMode: Image.PreserveAspectFit
                         }
                         Text {
                             text: "Install folder"

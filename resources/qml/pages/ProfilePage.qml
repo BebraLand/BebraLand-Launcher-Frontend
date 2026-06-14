@@ -10,13 +10,12 @@ Item {
 
     Theme { id: theme }
 
-    Image {
+    SharpImage {
         x: 82
         y: 28
         width: 38
         height: 38
         source: root.state.assetsUrl + "/Images/logo.svg"
-        fillMode: Image.PreserveAspectFit
     }
 
     BackButton {
@@ -60,12 +59,11 @@ Item {
                         radius: 27
                         color: theme.primary
 
-                        Image {
+                        SharpImage {
                             anchors.centerIn: parent
                             width: 30
                             height: 30
                             source: root.state.assetsUrl + "/Images/profile.svg"
-                            fillMode: Image.PreserveAspectFit
                             opacity: 0.9
                         }
                     }
@@ -99,7 +97,7 @@ Item {
                         }
                     }
 
-                    Image {
+                    SharpImage {
                         id: logoMark
                         anchors.right: parent.right
                         anchors.rightMargin: 28
@@ -107,7 +105,6 @@ Item {
                         width: 46
                         height: 46
                         source: root.state.assetsUrl + "/Images/logo.svg"
-                        fillMode: Image.PreserveAspectFit
                         opacity: 0.9
                     }
                 }
@@ -163,14 +160,13 @@ Item {
                         cache: false
                     }
 
-                    Image {
+                    SharpImage {
                         visible: root.skinUrl === ""
                         anchors.centerIn: parent
                         width: 118
                         height: 118
                         source: root.state.assetsUrl + "/Images/profile.svg"
                         opacity: 0.34
-                        fillMode: Image.PreserveAspectFit
                     }
                 }
 

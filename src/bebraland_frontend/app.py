@@ -1022,6 +1022,8 @@ def main() -> None:
     if run_update_helper_from_cli():
         return
     cleanup_update_cache()
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
     window = LauncherWindow()
     window.show()
