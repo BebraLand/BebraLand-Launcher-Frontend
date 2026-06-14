@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import threading
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
@@ -165,6 +166,13 @@ def file_url(path: Path) -> str:
     return QUrl.fromLocalFile(str(path)).toString()
 
 
+def cache_busted_url(url: str, nonce: int) -> str:
+    if not nonce or not url.startswith(("http://", "https://")):
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}_bl={nonce}"
+
+
 def format_post_date(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
@@ -217,6 +225,7 @@ class LauncherWindow(QWidget):
         self.max_ram_mb = launcher_ram_limit_mb()
         self.news: list[dict[str, Any]] = []
         self.skin_profile_payload: dict[str, Any] = {}
+        self.skin_cache_nonce = 0
         self.status_text = f"BebraLand Launcher {__version__}"
         self.progress_text = ""
         self.progress_value = 0
@@ -590,13 +599,13 @@ class LauncherWindow(QWidget):
             return str(avatars.get("body_url") or "")
         return ""
 
-    def cache_skin_profile_assets(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def cache_skin_profile_assets(self, payload: dict[str, Any], nonce: int = 0) -> dict[str, Any]:
         avatars = payload.get("avatars")
         if not isinstance(avatars, dict):
             return payload
 
         body_url = str(avatars.get("body_url") or "").strip()
-        if not body_url or body_url.startswith("file:"):
+        if body_url.startswith("file:"):
             return payload
 
         cached_payload = dict(payload)
@@ -605,12 +614,15 @@ class LauncherWindow(QWidget):
         cached_avatars["body_url"] = ""
         cached_payload["avatars"] = cached_avatars
 
-        if not body_url.startswith(("http://", "https://")):
+        cache_dir = launcher_data_dir() / "cache" / "skins"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        if not body_url or not body_url.startswith(("http://", "https://")):
             return cached_payload
 
         try:
             request = urllib.request.Request(
-                body_url,
+                cache_busted_url(body_url, nonce),
                 headers={"Accept": "image/*", "User-Agent": f"BebraLand Launcher/{__version__}"},
                 method="GET",
             )
@@ -624,9 +636,7 @@ class LauncherWindow(QWidget):
             self.bridge.log.emit("Skin render unavailable: image too large")
             return cached_payload
 
-        cache_dir = launcher_data_dir() / "cache" / "skins"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        digest = hashlib.sha256(body_url.encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(f"{body_url}|{nonce}".encode("utf-8")).hexdigest()
         path = cache_dir / f"{digest}.png"
         path.write_bytes(data)
         cached_avatars["body_url"] = file_url(path)
@@ -957,16 +967,19 @@ class LauncherWindow(QWidget):
 
     @Slot()
     def refreshSkin(self) -> None:
-        self.refresh_skin_profile()
+        self.refresh_skin_profile(force=True)
 
-    def refresh_skin_profile(self) -> None:
+    def refresh_skin_profile(self, force: bool = False) -> None:
         username = self.current_username()
         if not username:
             return
+        if force:
+            self.skin_cache_nonce = time.time_ns()
+        nonce = self.skin_cache_nonce
 
         def task() -> None:
             payload = self.client.skin_profile(username)
-            self.bridge.skin_profile.emit(self.cache_skin_profile_assets(payload))
+            self.bridge.skin_profile.emit(self.cache_skin_profile_assets(payload, nonce))
 
         self.run_bg(task, popup=False)
 
@@ -987,7 +1000,7 @@ class LauncherWindow(QWidget):
             else:
                 self.client.upload_skin(image, file_path.name)
             self.bridge.log.emit(f"Uploaded {texture_type}: {file_path.name}")
-            self.refresh_skin_profile()
+            self.refresh_skin_profile(force=True)
 
         self.run_bg(task)
 
