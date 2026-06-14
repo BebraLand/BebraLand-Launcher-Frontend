@@ -25,6 +25,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
+SetupIconFile=..\resources\gml\Images\logo.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Files]

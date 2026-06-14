@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import QPoint, Property, QObject, QRect, Qt, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QCursor, QDesktopServices
+from PySide6.QtGui import QCursor, QDesktopServices, QIcon
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QVBoxLayout, QWidget
 
@@ -32,7 +32,7 @@ from .runtime import (
     sync_manifest,
 )
 from .settings import load_settings, save_settings
-from .theme import DEFAULT_BACKGROUND_PATH, GML_ASSETS_DIR, NEWS_API_URL, register_fonts
+from .theme import DEFAULT_BACKGROUND_PATH, GML_ASSETS_DIR, GML_IMAGES_DIR, NEWS_API_URL, register_fonts
 from .updater import (
     can_self_replace,
     cleanup_update_cache,
@@ -72,6 +72,7 @@ HTBOTTOM = 15
 HTBOTTOMLEFT = 16
 HTBOTTOMRIGHT = 17
 QML_MAIN = GML_ASSETS_DIR.parent / "qml" / "Main.qml"
+APP_ICON_PATH = GML_IMAGES_DIR / "logo.ico"
 
 
 def strip_html(value: Any) -> str:
@@ -164,6 +165,8 @@ class LauncherWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BebraLand Launcher")
+        if APP_ICON_PATH.exists():
+            self.setWindowIcon(QIcon(str(APP_ICON_PATH)))
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.resize(1000, 600)
         self.setMinimumSize(1000, 600)
@@ -1090,6 +1093,8 @@ def main() -> None:
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
+    if APP_ICON_PATH.exists():
+        app.setWindowIcon(QIcon(str(APP_ICON_PATH)))
     window = LauncherWindow()
     window.show()
     sys.exit(app.exec())
