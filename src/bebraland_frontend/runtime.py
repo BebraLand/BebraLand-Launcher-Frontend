@@ -55,6 +55,7 @@ REINSTALL_SYSTEM_PATHS = [
     "runtime",
     "runtimes",
 ]
+SHARED_MINECRAFT_DIR_NAME = ".shared"
 AUTHLIB_ARTIFACT_URL = "https://authlib-injector.yushi.moe/artifact/latest.json"
 _instances_root_override: Path | None = None
 
@@ -408,6 +409,16 @@ def instance_dir(slug: str) -> Path:
     return path
 
 
+def shared_minecraft_dir() -> Path:
+    override = os.environ.get("BEBRALAND_SHARED_MINECRAFT_DIR", "").strip()
+    if override:
+        path = Path(override).expanduser().resolve()
+    else:
+        path = (instances_root() / SHARED_MINECRAFT_DIR_NAME / "minecraft").resolve()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def local_instance_path(game_dir: Path, relative_path: str) -> Path:
     root = game_dir.resolve()
     path = game_dir / relative_path
@@ -435,8 +446,57 @@ def installed_version_id(profile: dict[str, Any]) -> str:
     return mod_loader.get_installed_version(minecraft_version, loader_version)
 
 
-def version_is_installed(game_dir: Path, version_id: str) -> bool:
-    return (game_dir / "versions" / version_id / f"{version_id}.json").is_file()
+def version_is_installed(minecraft_dir: Path, version_id: str) -> bool:
+    return (minecraft_dir / "versions" / version_id / f"{version_id}.json").is_file()
+
+
+def copy_missing_tree(source: Path, target: Path) -> int:
+    if not source.exists():
+        return 0
+    copied = 0
+    if source.is_symlink() or source.is_file():
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            copied += 1
+        return copied
+
+    for item in sorted(source.rglob("*")):
+        rel = item.relative_to(source)
+        dest = target / rel
+        if item.is_dir():
+            dest.mkdir(parents=True, exist_ok=True)
+            continue
+        if dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(item, dest)
+        copied += 1
+    return copied
+
+
+def seed_shared_minecraft_cache(minecraft_dir: Path, current_game_dir: Path, status: Status) -> int:
+    root = instances_root()
+    shared_root = (root / SHARED_MINECRAFT_DIR_NAME).resolve()
+    candidates = [current_game_dir]
+    if root.exists():
+        for candidate in sorted(root.iterdir()):
+            if not candidate.is_dir() or candidate.name == SHARED_MINECRAFT_DIR_NAME:
+                continue
+            if candidate.resolve() == current_game_dir.resolve():
+                continue
+            candidates.append(candidate)
+
+    copied = 0
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved == shared_root or shared_root in resolved.parents:
+            continue
+        for name in REINSTALL_SYSTEM_PATHS:
+            copied += copy_missing_tree(candidate / name, minecraft_dir / name)
+    if copied:
+        status(f"Migrated old per-pack Minecraft cache to shared cache: {copied} files")
+    return copied
 
 
 def read_old_manifest(game_dir: Path) -> dict[str, Any] | None:
@@ -481,6 +541,15 @@ def delete_instance(slug: str, status: Status) -> None:
     status(f"Deleted local pack: {slug}")
 
 
+def cleanup_legacy_instance_runtime(game_dir: Path, status: Status) -> int:
+    removed = 0
+    for name in REINSTALL_SYSTEM_PATHS:
+        removed += remove_local_path(game_dir / name)
+    if removed:
+        status(f"Removed old per-pack Minecraft cache: {removed}")
+    return removed
+
+
 def prepare_reinstall(
     manifest: dict[str, Any],
     status: Status,
@@ -492,9 +561,8 @@ def prepare_reinstall(
     manifest_files, disabled_optional = selected_manifest_files(manifest, selected_optional_mod_ids)
     removed = 0
 
-    status(f"Clean Minecraft runtime for {profile['slug']}")
-    for name in REINSTALL_SYSTEM_PATHS:
-        removed += remove_local_path(game_dir / name)
+    status(f"Clean local pack cache for {profile['slug']}")
+    removed += cleanup_legacy_instance_runtime(game_dir, status)
 
     for item in manifest_files:
         rel = str(item["path"]).replace("\\", "/")
@@ -594,6 +662,7 @@ def sync_manifest(
 ) -> Path:
     profile = manifest["profile"]
     game_dir = instance_dir(profile["slug"])
+    cleanup_legacy_instance_runtime(game_dir, status)
     manifest_files, disabled_optional = selected_manifest_files(manifest, selected_optional_mod_ids)
     wanted = {str(item["path"]).replace("\\", "/"): item for item in manifest_files}
     rules = manifest.get("rules") or {}
@@ -672,6 +741,8 @@ def install_mod_loader(
     loader_id = profile["mod_loader"].lower()
     minecraft_version = profile["minecraft_version"]
     loader_version = profile["loader_version"]
+    minecraft_dir = shared_minecraft_dir()
+    seed_shared_minecraft_cache(minecraft_dir, game_dir, status)
     install_progress = MinecraftInstallProgress(status, progress)
 
     def set_status(text: str) -> None:
@@ -685,22 +756,22 @@ def install_mod_loader(
 
     callback = {"setStatus": set_status, "setMax": set_max, "setProgress": set_progress}
     installed_version = installed_version_id(profile)
-    if version_is_installed(game_dir, installed_version):
-        status(f"Use installed {installed_version}")
+    if version_is_installed(minecraft_dir, installed_version):
+        status(f"Use shared Minecraft cache: {installed_version}")
         return installed_version
 
     if loader_id in {"vanilla", "minecraft", "none"}:
-        status(f"Install Minecraft {minecraft_version}")
+        status(f"Install Minecraft {minecraft_version} to shared cache")
         with track_streamed_request_bytes(install_progress.add_downloaded_bytes):
-            minecraft_launcher_lib.install.install_minecraft_version(minecraft_version, str(game_dir), callback=callback)
+            minecraft_launcher_lib.install.install_minecraft_version(minecraft_version, str(minecraft_dir), callback=callback)
         return minecraft_version
 
-    status(f"Install {loader_id} {loader_version} for Minecraft {minecraft_version}")
+    status(f"Install {loader_id} {loader_version} for Minecraft {minecraft_version} to shared cache")
     mod_loader = minecraft_launcher_lib.mod_loader.get_mod_loader(loader_id)
     with track_streamed_request_bytes(install_progress.add_downloaded_bytes):
         return mod_loader.install(
             minecraft_version,
-            str(game_dir),
+            str(minecraft_dir),
             loader_version=loader_version,
             callback=callback,
         )
@@ -718,9 +789,17 @@ def authlib_api_url(server_url: str) -> str:
 
 
 def authlib_cache_dir() -> Path:
-    path = launcher_data_dir() / "authlib-injector"
+    override = os.environ.get("BEBRALAND_AUTHLIB_CACHE_DIR", "").strip()
+    if override:
+        path = Path(override).expanduser().resolve()
+    else:
+        path = shared_minecraft_dir().parent / "authlib-injector"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def legacy_authlib_cache_dir() -> Path:
+    return launcher_data_dir() / "authlib-injector"
 
 
 def fetch_authlib_metadata(api_url: str, status: Status) -> str:
@@ -746,19 +825,36 @@ def ensure_authlib_injector(status: Status, progress: Progress | None = None) ->
         status("Check authlib-injector")
         with requests.get(artifact_url, timeout=20) as response:
             response.raise_for_status()
-            artifact = response.json()
+        artifact = response.json()
         version = str(artifact["version"])
         checksum = str(artifact["checksums"]["sha256"])
         jar_path = cache_dir / f"authlib-injector-{version}.jar"
         if jar_path.is_file() and sha256_file(jar_path) == checksum:
             status(f"Use authlib-injector {version}")
             return jar_path
+        legacy_jar = legacy_authlib_cache_dir() / jar_path.name
+        if legacy_jar.resolve() != jar_path.resolve() and legacy_jar.is_file() and sha256_file(legacy_jar) == checksum:
+            shutil.copy2(legacy_jar, jar_path)
+            status(f"Migrated authlib-injector {version} to shared cache")
+            return jar_path
         download_file(str(artifact["download_url"]), jar_path, checksum, status, progress)
         (cache_dir / "latest.json").write_text(json.dumps(artifact, indent=2), encoding="utf-8")
         status(f"Downloaded authlib-injector {version}")
         return jar_path
     except Exception as exc:
-        cached = sorted(cache_dir.glob("authlib-injector-*.jar"), key=lambda path: path.stat().st_mtime, reverse=True)
+        cache_dirs = [cache_dir, legacy_authlib_cache_dir()]
+        cached_paths = []
+        seen: set[Path] = set()
+        for item in cache_dirs:
+            if not item.exists():
+                continue
+            for jar in item.glob("authlib-injector-*.jar"):
+                resolved = jar.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                cached_paths.append(jar)
+        cached = sorted(cached_paths, key=lambda path: path.stat().st_mtime, reverse=True)
         if cached:
             status(f"Use cached authlib-injector after update check failed: {exc}")
             return cached[0]
@@ -812,6 +908,7 @@ def launch_minecraft(
 ) -> subprocess.Popen:
     if installed_version is None:
         installed_version = install_mod_loader(manifest, game_dir, status, progress)
+    minecraft_dir = shared_minecraft_dir()
     mc_username, mc_uuid, mc_token = minecraft_profile_values(username, access_token, minecraft_profile)
     options = minecraft_launcher_lib.utils.generate_test_options()
     jvm_arguments = list(options.get("jvmArguments") or [])
@@ -820,8 +917,9 @@ def launch_minecraft(
         for argument in jvm_arguments
         if not argument.startswith("-Xmx") and not argument.startswith("-Xms")
     ]
-    if server_url:
-        jvm_arguments.extend(authlib_jvm_arguments(server_url, status, progress))
+    if not server_url:
+        raise ValueError("Authlib server URL required before launching Minecraft")
+    jvm_arguments.extend(authlib_jvm_arguments(server_url, status, progress))
     jvm_arguments.extend(ram_jvm_arguments(ram_mb))
     window_settings = window_settings or {}
     fullscreen = bool(window_settings.get("fullscreen"))
@@ -846,7 +944,7 @@ def launch_minecraft(
         options["resolutionHeight"] = str(height)
     command = minecraft_launcher_lib.command.get_minecraft_command(
         installed_version,
-        str(game_dir),
+        str(minecraft_dir),
         options,
     )
     for index, argument in enumerate(command[:-1]):

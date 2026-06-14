@@ -954,7 +954,7 @@ class LauncherWindow(QWidget):
         answer = QMessageBox.question(
             self,
             "BebraLand reinstall",
-            f"Reinstall local pack '{name}'?\n\nUser data stays. Runtime and managed pack files download again.",
+            f"Reinstall local pack '{name}'?\n\nUser data stays. Shared Minecraft/authlib cache stays. Managed pack files download again.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

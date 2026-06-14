@@ -28,7 +28,7 @@ When user clicks `Launch`:
 
 1. Frontend requests latest manifest from backend over WebSocket.
 2. Backend rebuilds manifest from server profile folder.
-3. Frontend uses existing Minecraft/modloader install if present; otherwise installs it locally from profile metadata.
+3. Frontend uses shared Minecraft/modloader cache if present; otherwise installs it once from profile metadata.
 4. Frontend checks pack files by SHA256.
 5. Missing/changed pack files download from backend `/files/...`.
 6. Launcher downloads/caches authlib-injector, fetches backend Yggdrasil metadata, and starts installed Minecraft/modloader profile with selected RAM and Azuriom credentials.
@@ -39,7 +39,7 @@ If backend changes a profile runtime with `profile runtime` / `profile hotswap` 
 
 Pack controls:
 
-- `Reinstall`: downloads Minecraft runtime and managed pack files again, while keeping local user data like `saves`, `screenshots`, `resourcepacks`, `shaderpacks`, options, and server list.
+- `Reinstall`: keeps shared Minecraft/authlib cache, downloads managed pack files again, and keeps local user data like `saves`, `screenshots`, `resourcepacks`, `shaderpacks`, options, and server list.
 - `Delete`: removes the whole local instance folder for the selected pack from this computer.
 
 Sync modes:
@@ -50,11 +50,13 @@ Sync modes:
 
 Frontend always protects local user data folders/files from pack cleanup: saves, screenshots, resource packs, shader packs, logs/crash reports, replay recordings, options, and server list.
 
-Launcher saves settings, per-profile RAM overrides, Azuriom token, instances, and authlib cache in the native user data folder:
+Launcher saves settings, per-profile RAM overrides, Azuriom token, instances, and shared Minecraft/authlib cache in the native user data folder:
 
 - Windows: `%APPDATA%\BebraLandLauncher`
 - macOS: `~/Library/Application Support/BebraLandLauncher`
 - Linux: `$XDG_DATA_HOME/BebraLandLauncher` or `~/.local/share/BebraLandLauncher`
+
+Each profile still has its own instance folder for mods, config, saves, screenshots, and options. Minecraft assets, libraries, versions, Java runtime, modloader installs, and authlib-injector live once under the install folder's `.shared` directory and are reused by every matching profile.
 
 Backend sends `recommended_ram_mb` for each profile. Launcher uses that value by default, lets player change it with the RAM slider, and warns before launch if selected RAM is below recommended.
 
@@ -203,8 +205,8 @@ Account page supports Azuriom Skin API:
 Minecraft launch uses the verified Azuriom access token as the auth token and the backend-provided Minecraft profile as `username`/`uuid`. The launcher adds:
 
 ```text
--javaagent:<launcher-data-dir>/authlib-injector/authlib-injector-<version>.jar=<server>/api/yggdrasil/
+-javaagent:<install-dir>/.shared/authlib-injector/authlib-injector-<version>.jar=<server>/api/yggdrasil/
 -Dauthlibinjector.yggdrasil.prefetched=<metadata>
 ```
 
-Set `AUTHLIB_INJECTOR_JAR` if you want to force a local jar instead of downloading from `https://authlib-injector.yushi.moe/artifact/latest.json`.
+Set `AUTHLIB_INJECTOR_JAR` if you want to force a local jar instead of downloading from `https://authlib-injector.yushi.moe/artifact/latest.json`. Set `BEBRALAND_AUTHLIB_CACHE_DIR` or `BEBRALAND_SHARED_MINECRAFT_DIR` only for custom cache layouts.
