@@ -70,7 +70,7 @@ Item {
                         width: 50
                         height: 50
                         radius: 25
-                        color: modelData.slug === root.state.selectedSlug ? theme.primary : "transparent"
+                        color: root.page === "home" && modelData.slug === root.state.selectedSlug ? theme.primary : "transparent"
 
                         function roundedContains(x, y, width, height, radius) {
                             if (x < 0 || y < 0 || x > width || y > height)
