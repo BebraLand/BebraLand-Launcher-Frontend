@@ -155,6 +155,7 @@ class Bridge(QObject):
     news = Signal(list)
     skin_profile = Signal(dict)
     logged_out = Signal(str)
+    profiles_unavailable = Signal()
 
 
 class LauncherWindow(QWidget):
@@ -188,6 +189,8 @@ class LauncherWindow(QWidget):
         self.two_factor_visible = False
         self._last_login_email = ""
         self._last_login_password = ""
+        self._profiles_loaded = False
+        self._auth_verify_pending = bool(self.client.token)
         self._state: dict[str, Any] = {}
 
         self.apply_install_root()
@@ -205,6 +208,7 @@ class LauncherWindow(QWidget):
         self.bridge.news.connect(self.set_news)
         self.bridge.skin_profile.connect(self.set_skin_profile)
         self.bridge.logged_out.connect(self.handle_logged_out)
+        self.bridge.profiles_unavailable.connect(self.mark_profiles_unavailable)
 
         self.refresh_state()
         self.build_ui()
@@ -346,8 +350,10 @@ class LauncherWindow(QWidget):
     def refresh_state(self) -> None:
         profile = self.selected_profile()
         authenticated = bool(self.client.token and self.auth_user)
+        bootstrapping = self._auth_verify_pending or (authenticated and not self._profiles_loaded)
         self._state = {
             "authenticated": authenticated,
+            "bootstrapping": bootstrapping,
             "version": __version__,
             "status": self.status_text,
             "progressText": self.progress_text,
@@ -650,6 +656,7 @@ class LauncherWindow(QWidget):
         self.apply_profiles(profiles, update_status=False)
 
     def apply_profiles(self, profiles: list[dict[str, Any]], update_status: bool) -> None:
+        self._profiles_loaded = True
         self.profiles = profiles
         if not self.selected_profile_slug and profiles:
             self.selected_profile_slug = str(profiles[0].get("slug") or "")
@@ -659,11 +666,16 @@ class LauncherWindow(QWidget):
             self.status_text = f"Profiles: {len(profiles)}"
         self.refresh_state()
 
+    def mark_profiles_unavailable(self) -> None:
+        self._profiles_loaded = True
+        self.refresh_state()
+
     def set_news(self, posts: list[dict[str, Any]]) -> None:
         self.news = posts
         self.refresh_state()
 
     def set_auth(self, payload: dict[str, Any]) -> None:
+        self._auth_verify_pending = False
         self.auth_user = payload["user"]
         self.minecraft_profile = payload.get("minecraft_profile") or self.minecraft_profile
         if payload.get("access_token"):
@@ -684,6 +696,7 @@ class LauncherWindow(QWidget):
         self.refresh_state()
 
     def handle_logged_out(self, reason: str = "") -> None:
+        self._auth_verify_pending = False
         self.auth_user = None
         self.minecraft_profile = None
         self.client.token = None
@@ -698,13 +711,18 @@ class LauncherWindow(QWidget):
         self.reset_client()
 
         def task() -> None:
-            if not silent:
-                self.bridge.log.emit("Load profiles")
-            profiles = self.client.get_profiles()
-            if silent:
-                self.bridge.profiles_silent.emit(profiles)
-            else:
-                self.bridge.profiles.emit(profiles)
+            try:
+                if not silent:
+                    self.bridge.log.emit("Load profiles")
+                profiles = self.client.get_profiles()
+                if silent:
+                    self.bridge.profiles_silent.emit(profiles)
+                else:
+                    self.bridge.profiles.emit(profiles)
+            except Exception:
+                if not silent:
+                    self.bridge.profiles_unavailable.emit()
+                raise
 
         self.run_bg(task, popup=False)
 

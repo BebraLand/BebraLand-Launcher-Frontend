@@ -18,6 +18,8 @@ Rectangle {
     Theme { id: theme }
 
     function syncPage() {
+        if (s.bootstrapping)
+            return
         if (!s.authenticated) {
             currentPage = "login"
             return
@@ -38,7 +40,7 @@ Rectangle {
 
     SharpImage {
         anchors.fill: parent
-        source: root.currentPage === "home" && root.s.selectedProfile && root.s.selectedProfile.background_url
+        source: !root.s.bootstrapping && root.currentPage === "home" && root.s.selectedProfile && root.s.selectedProfile.background_url
                 ? root.s.selectedProfile.background_url
                 : root.s.defaultBackgroundUrl
         fillMode: Image.PreserveAspectCrop
@@ -75,6 +77,8 @@ Rectangle {
         id: pageLoader
         z: 5
         anchors.fill: parent
+        active: !root.s.bootstrapping
+        visible: active
         sourceComponent: root.currentPage === "login" ? loginComponent
                        : root.currentPage === "settings" ? settingsComponent
                        : root.currentPage === "profile" ? profileComponent
@@ -87,10 +91,69 @@ Rectangle {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.left: parent.left
-        visible: root.s.authenticated
+        visible: root.s.authenticated && !root.s.bootstrapping
         state: root.s
         page: root.currentPage
         onPageRequested: function(page) { root.currentPage = page }
+    }
+
+    Item {
+        z: 25
+        anchors.fill: parent
+        visible: root.s.bootstrapping
+
+        Column {
+            anchors.centerIn: parent
+            spacing: 20
+
+            SharpImage {
+                width: 74
+                height: 74
+                anchors.horizontalCenter: parent.horizontalCenter
+                source: root.s.assetsUrl ? root.s.assetsUrl + "/Images/logo.svg" : ""
+                renderScale: 1
+            }
+
+            Text {
+                width: 420
+                horizontalAlignment: Text.AlignHCenter
+                text: "Connecting to server..."
+                color: theme.headline
+                elide: Text.ElideRight
+                font.family: theme.fontFamily
+                font.pixelSize: 18
+                font.weight: Font.Bold
+            }
+
+            Rectangle {
+                width: 180
+                height: 5
+                radius: 3
+                anchors.horizontalCenter: parent.horizontalCenter
+                color: theme.formBorder
+                clip: true
+
+                Rectangle {
+                    id: loadingFill
+                    width: 70
+                    height: parent.height
+                    radius: parent.radius
+                    color: theme.primary
+                    x: -70
+                }
+
+                NumberAnimation {
+                    id: loadingAnim
+                    target: loadingFill
+                    property: "x"
+                    from: -70
+                    to: 180
+                    duration: 1150
+                    loops: Animation.Infinite
+                    running: root.s.bootstrapping
+                }
+            }
+        }
     }
 
     Rectangle {
