@@ -936,7 +936,7 @@ class LauncherWindow(QWidget):
     @Slot(str)
     def uploadTexture(self, texture_type: str) -> None:
         if not self.client.token or not self.auth_user:
-            QMessageBox.warning(self, "BebraLand", "Login Azuriom first")
+            QMessageBox.warning(self, "BebraLand", "Login to BebraLand first")
             return
         path, _ = QFileDialog.getOpenFileName(self, "Choose PNG", str(Path.home()), "PNG images (*.png)")
         if not path:
@@ -985,7 +985,7 @@ class LauncherWindow(QWidget):
             QMessageBox.warning(self, "BebraLand", "Choose pack first")
             return
         if not self.client.token or not self.auth_user:
-            QMessageBox.warning(self, "BebraLand", "Login Azuriom first")
+            QMessageBox.warning(self, "BebraLand", "Login to BebraLand first")
             return
         profile = self.selected_profile()
         ram_mb = self.profile_ram_value(profile)

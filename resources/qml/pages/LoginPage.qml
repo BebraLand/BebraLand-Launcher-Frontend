@@ -15,7 +15,7 @@ Item {
 
     FrameCard {
         width: 380
-        height: 430
+        height: 455
         anchors.centerIn: parent
         contentPadding: 30
 
@@ -91,10 +91,15 @@ Item {
             GmlButton {
                 width: parent.width
                 kind: "primary"
-                text: "Login Azuriom"
+                text: "Login to BebraLand"
                 iconSource: root.asset("login.svg")
                 iconSize: 24
                 onClicked: controller.login(loginField.text, passwordField.text, "")
+            }
+
+            Item {
+                width: parent.width
+                height: 5
             }
         }
     }
