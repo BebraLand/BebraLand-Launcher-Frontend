@@ -58,6 +58,8 @@ Launcher saves settings, per-profile RAM overrides, Azuriom token, instances, an
 
 Each profile still has its own instance folder for mods, config, saves, screenshots, and options. Minecraft assets, libraries, versions, Java runtime, modloader installs, and authlib-injector live once under the install folder's `.shared` directory and are reused by every matching profile.
 
+If a matching 64-bit system Java is already installed, launcher finds it automatically, uses it, and skips downloading Mojang Java runtime. Matching means exact required major version from Minecraft metadata, for example Java 21 for Minecraft 1.21.1. If no safe match is found, launcher falls back to shared Mojang Java runtime. `BEBRALAND_JAVA_PATH` / `BEBRALAND_JAVA_HOME` are optional admin/debug hints, not required for normal users; set `BEBRALAND_USE_SYSTEM_JAVA=0` to disable auto-detect.
+
 Backend sends `recommended_ram_mb` for each profile. Launcher uses that value by default, lets player change it with the RAM slider, and warns before launch if selected RAM is below recommended.
 
 Backend can send `icon_url` and `background_url` for each profile. Launcher uses those assets for the profile rail, hero logo, and main background. If a profile has no background, launcher falls back to bundled `background_for_launcher.jpg`, also used by Settings and Account pages.

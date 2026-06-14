@@ -57,6 +57,7 @@ REINSTALL_SYSTEM_PATHS = [
 ]
 SHARED_MINECRAFT_DIR_NAME = ".shared"
 AUTHLIB_ARTIFACT_URL = "https://authlib-injector.yushi.moe/artifact/latest.json"
+DISABLED_ENV_VALUES = {"0", "false", "no", "off", "disabled"}
 _instances_root_override: Path | None = None
 
 
@@ -450,6 +451,178 @@ def version_is_installed(minecraft_dir: Path, version_id: str) -> bool:
     return (minecraft_dir / "versions" / version_id / f"{version_id}.json").is_file()
 
 
+def system_java_enabled() -> bool:
+    value = os.environ.get("BEBRALAND_USE_SYSTEM_JAVA", "1").strip().lower()
+    return value not in DISABLED_ENV_VALUES
+
+
+def java_home_from_path(value: str | os.PathLike) -> Path:
+    path = Path(value).expanduser()
+    name = path.name.lower()
+    if name in {"java", "java.exe", "javaw", "javaw.exe"}:
+        return path.parent.parent
+    if name == "bin":
+        return path.parent
+    return path
+
+
+def java_major_from_version(version: Any) -> int | None:
+    text = str(version or "").replace("_", ".")
+    parts: list[int] = []
+    for part in text.split("."):
+        if not part.isdigit():
+            break
+        parts.append(int(part))
+    if not parts:
+        return None
+    if parts[0] == 1 and len(parts) > 1:
+        return parts[1]
+    return parts[0]
+
+
+def java_parent_search_dirs() -> list[Path]:
+    result: list[Path] = []
+    for env_name in ("BEBRALAND_JAVA_SEARCH_DIRS", "BEBRALAND_JAVA_SEARCH_DIR"):
+        raw = os.environ.get(env_name, "").strip()
+        if raw:
+            result.extend(Path(item).expanduser() for item in raw.split(os.pathsep) if item.strip())
+
+    for env_name in ("JAVA_HOME", "BEBRALAND_JAVA_HOME", "BEBRALAND_JAVA_PATH"):
+        raw = os.environ.get(env_name, "").strip()
+        if raw:
+            result.append(java_home_from_path(raw).parent)
+
+    if os.name == "nt":
+        vendor_dirs = [
+            "Java",
+            "Eclipse Adoptium",
+            "Microsoft",
+            "BellSoft",
+            "Zulu",
+            "Amazon Corretto",
+            "RedHat",
+            "Semeru",
+        ]
+        for base_name in ("ProgramFiles", "ProgramFiles(x86)"):
+            base = os.environ.get(base_name, "").strip()
+            if base:
+                result.extend(Path(base) / vendor for vendor in vendor_dirs)
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for path in result:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(resolved)
+    return deduped
+
+
+def candidate_java_homes() -> list[Path]:
+    candidates: list[Path] = []
+    for env_name in ("BEBRALAND_JAVA_PATH", "BEBRALAND_JAVA_HOME", "JAVA_HOME"):
+        raw = os.environ.get(env_name, "").strip()
+        if raw:
+            candidates.append(java_home_from_path(raw))
+
+    path_java = shutil.which("java")
+    if path_java:
+        candidates.append(java_home_from_path(path_java))
+
+    try:
+        found = minecraft_launcher_lib.java_utils.find_system_java_versions(
+            additional_directories=java_parent_search_dirs(),
+        )
+    except Exception:
+        found = []
+    candidates.extend(Path(item) for item in found)
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for path in candidates:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            continue
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(resolved)
+    return deduped
+
+
+def required_java_major(profile: dict[str, Any], minecraft_dir: Path) -> int | None:
+    minecraft_version = str(profile["minecraft_version"])
+    information = minecraft_launcher_lib.runtime.get_version_runtime_information(minecraft_version, str(minecraft_dir))
+    if not information:
+        return None
+    return int(information["javaMajorVersion"])
+
+
+def select_system_java(profile: dict[str, Any], minecraft_dir: Path, status: Status) -> dict[str, Any] | None:
+    if not system_java_enabled():
+        return None
+
+    try:
+        required_major = required_java_major(profile, minecraft_dir)
+    except Exception as exc:
+        status(f"System Java check skipped: {exc}")
+        return None
+    if not required_major:
+        return None
+
+    for home in candidate_java_homes():
+        try:
+            information = minecraft_launcher_lib.java_utils.get_java_information(str(home))
+        except Exception:
+            continue
+        major = java_major_from_version(information.get("version"))
+        if major != required_major:
+            continue
+        if not bool(information.get("is_64bit")):
+            continue
+        java_path = Path(str(information.get("java_path") or ""))
+        if not java_path.is_file():
+            continue
+        status(f"Use system Java {required_major}: {java_path}")
+        return dict(information)
+
+    return None
+
+
+@contextmanager
+def skip_mojang_java_runtime_when_system_java(java_info: dict[str, Any] | None, status: Status) -> Iterator[None]:
+    if not java_info:
+        yield
+        return
+
+    original_install_jvm_runtime = minecraft_launcher_lib.install.install_jvm_runtime
+    java_version = java_major_from_version(java_info.get("version"))
+
+    def skip_jvm_runtime(
+        jvm_version: str,
+        minecraft_directory: str | os.PathLike,
+        callback: dict[str, Callable[..., Any]] | None = None,
+        max_workers: int | None = None,
+    ) -> None:
+        del minecraft_directory, max_workers
+        label = f"Use system Java {java_version}, skip Mojang runtime {jvm_version}"
+        if callback and callback.get("setStatus"):
+            callback["setStatus"](label)
+        else:
+            status(label)
+
+    minecraft_launcher_lib.install.install_jvm_runtime = skip_jvm_runtime
+    try:
+        yield
+    finally:
+        minecraft_launcher_lib.install.install_jvm_runtime = original_install_jvm_runtime
+
+
 def copy_missing_tree(source: Path, target: Path) -> int:
     if not source.exists():
         return 0
@@ -743,6 +916,8 @@ def install_mod_loader(
     loader_version = profile["loader_version"]
     minecraft_dir = shared_minecraft_dir()
     seed_shared_minecraft_cache(minecraft_dir, game_dir, status)
+    java_info = select_system_java(profile, minecraft_dir, status)
+    java_path = str(java_info["java_path"]) if java_info else None
     install_progress = MinecraftInstallProgress(status, progress)
 
     def set_status(text: str) -> None:
@@ -760,21 +935,27 @@ def install_mod_loader(
         status(f"Use shared Minecraft cache: {installed_version}")
         return installed_version
 
-    if loader_id in {"vanilla", "minecraft", "none"}:
-        status(f"Install Minecraft {minecraft_version} to shared cache")
-        with track_streamed_request_bytes(install_progress.add_downloaded_bytes):
-            minecraft_launcher_lib.install.install_minecraft_version(minecraft_version, str(minecraft_dir), callback=callback)
-        return minecraft_version
+    with skip_mojang_java_runtime_when_system_java(java_info, status):
+        if loader_id in {"vanilla", "minecraft", "none"}:
+            status(f"Install Minecraft {minecraft_version} to shared cache")
+            with track_streamed_request_bytes(install_progress.add_downloaded_bytes):
+                minecraft_launcher_lib.install.install_minecraft_version(
+                    minecraft_version,
+                    str(minecraft_dir),
+                    callback=callback,
+                )
+            return minecraft_version
 
-    status(f"Install {loader_id} {loader_version} for Minecraft {minecraft_version} to shared cache")
-    mod_loader = minecraft_launcher_lib.mod_loader.get_mod_loader(loader_id)
-    with track_streamed_request_bytes(install_progress.add_downloaded_bytes):
-        return mod_loader.install(
-            minecraft_version,
-            str(minecraft_dir),
-            loader_version=loader_version,
-            callback=callback,
-        )
+        status(f"Install {loader_id} {loader_version} for Minecraft {minecraft_version} to shared cache")
+        mod_loader = minecraft_launcher_lib.mod_loader.get_mod_loader(loader_id)
+        with track_streamed_request_bytes(install_progress.add_downloaded_bytes):
+            return mod_loader.install(
+                minecraft_version,
+                str(minecraft_dir),
+                loader_version=loader_version,
+                callback=callback,
+                java=java_path,
+            )
 
 
 def ram_jvm_arguments(ram_mb: int | None) -> list[str]:
@@ -893,6 +1074,41 @@ def minecraft_profile_values(
     return name, profile_id, access_token
 
 
+def ensure_mojang_java_runtime(
+    installed_version: str,
+    minecraft_dir: Path,
+    status: Status,
+    progress: Progress | None = None,
+) -> None:
+    try:
+        information = minecraft_launcher_lib.runtime.get_version_runtime_information(installed_version, str(minecraft_dir))
+    except Exception as exc:
+        status(f"Mojang Java runtime check skipped: {exc}")
+        return
+    if not information:
+        return
+
+    runtime_name = str(information["name"])
+    if minecraft_launcher_lib.runtime.get_executable_path(runtime_name, str(minecraft_dir)):
+        return
+
+    install_progress = MinecraftInstallProgress(status, progress)
+
+    def set_status(text: str) -> None:
+        install_progress.set_status(text)
+
+    def set_max(value: int) -> None:
+        install_progress.set_max(value)
+
+    def set_progress(value: int) -> None:
+        install_progress.set_progress(value)
+
+    callback = {"setStatus": set_status, "setMax": set_max, "setProgress": set_progress}
+    status(f"Install Mojang Java runtime {runtime_name}")
+    with track_streamed_request_bytes(install_progress.add_downloaded_bytes):
+        minecraft_launcher_lib.runtime.install_jvm_runtime(runtime_name, str(minecraft_dir), callback=callback)
+
+
 def launch_minecraft(
     manifest: dict[str, Any],
     game_dir: Path,
@@ -909,6 +1125,9 @@ def launch_minecraft(
     if installed_version is None:
         installed_version = install_mod_loader(manifest, game_dir, status, progress)
     minecraft_dir = shared_minecraft_dir()
+    java_info = select_system_java(manifest["profile"], minecraft_dir, status)
+    if not java_info:
+        ensure_mojang_java_runtime(installed_version, minecraft_dir, status, progress)
     mc_username, mc_uuid, mc_token = minecraft_profile_values(username, access_token, minecraft_profile)
     options = minecraft_launcher_lib.utils.generate_test_options()
     jvm_arguments = list(options.get("jvmArguments") or [])
@@ -936,6 +1155,8 @@ def launch_minecraft(
             "launcherVersion": "0.1.0",
         }
     )
+    if java_info:
+        options["executablePath"] = str(java_info["java_path"])
     if fullscreen:
         options["fullscreen"] = True
     elif width > 0 and height > 0:
