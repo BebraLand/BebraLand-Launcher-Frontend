@@ -21,6 +21,7 @@ UPDATE_HELPER_FLAG = "--apply-update"
 INSTALLED_UPDATER_FLAG = "--install-update"
 UPDATER_EXE_NAME = updater_binary_name()
 UPDATE_WAIT_SECONDS = 60
+UPDATE_REPLACE_RETRY_SECONDS = 30
 
 
 def numeric_version(value: str) -> tuple[int, ...]:
@@ -335,6 +336,31 @@ def wait_for_process_exit(pid: int, timeout_seconds: int = UPDATE_WAIT_SECONDS) 
     raise TimeoutError("Old launcher did not exit before update timeout")
 
 
+def is_transient_replace_error(exc: OSError) -> bool:
+    if isinstance(exc, PermissionError):
+        return True
+    if os.name == "nt":
+        return getattr(exc, "winerror", None) in {5, 32}
+    return False
+
+
+def replace_file_with_retry(source: Path, target: Path, timeout_seconds: int = UPDATE_REPLACE_RETRY_SECONDS) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_error: OSError | None = None
+    while True:
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            if not is_transient_replace_error(exc):
+                raise
+            last_error = exc
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.5)
+    raise TimeoutError(f"Could not replace locked launcher after {timeout_seconds} seconds") from last_error
+
+
 def apply_update_file(source: Path, target: Path, old_pid: int, relaunch: bool = True) -> None:
     source = source.resolve()
     target = target.resolve()
@@ -347,7 +373,7 @@ def apply_update_file(source: Path, target: Path, old_pid: int, relaunch: bool =
     try:
         tmp_target.unlink(missing_ok=True)
         shutil.copy2(source, tmp_target)
-        os.replace(tmp_target, target)
+        replace_file_with_retry(tmp_target, target)
     except Exception:
         tmp_target.unlink(missing_ok=True)
         raise
