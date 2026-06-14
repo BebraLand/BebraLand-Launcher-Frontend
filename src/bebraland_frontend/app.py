@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
+import hashlib
 import html
 import json
 import os
@@ -49,6 +50,7 @@ MAX_RAM_MB = 16384
 RESERVED_SYSTEM_RAM_MB = 1024
 DEFAULT_WINDOW_WIDTH = 900
 DEFAULT_WINDOW_HEIGHT = 600
+MAX_SKIN_RENDER_BYTES = 5 * 1024 * 1024
 WINDOW_RESIZE_MARGIN = 8
 GWL_STYLE = -16
 SWP_NOMOVE = 0x0002
@@ -204,6 +206,7 @@ class LauncherWindow(QWidget):
         self.bridge.skin_profile.connect(self.set_skin_profile)
         self.bridge.logged_out.connect(self.handle_logged_out)
 
+        self.refresh_state()
         self.build_ui()
         self.configure_client_events()
         self.refresh_profiles()
@@ -215,7 +218,6 @@ class LauncherWindow(QWidget):
         if self.client.token:
             self.verify_saved_login()
         self.check_update()
-        self.refresh_state()
 
     @Property("QVariant", notify=stateChanged)
     def state(self) -> dict[str, Any]:
@@ -545,6 +547,48 @@ class LauncherWindow(QWidget):
             return str(avatars.get("body_url") or "")
         return ""
 
+    def cache_skin_profile_assets(self, payload: dict[str, Any]) -> dict[str, Any]:
+        avatars = payload.get("avatars")
+        if not isinstance(avatars, dict):
+            return payload
+
+        body_url = str(avatars.get("body_url") or "").strip()
+        if not body_url or body_url.startswith("file:"):
+            return payload
+
+        cached_payload = dict(payload)
+        cached_avatars = dict(avatars)
+        cached_avatars["remote_body_url"] = body_url
+        cached_avatars["body_url"] = ""
+        cached_payload["avatars"] = cached_avatars
+
+        if not body_url.startswith(("http://", "https://")):
+            return cached_payload
+
+        try:
+            request = urllib.request.Request(
+                body_url,
+                headers={"Accept": "image/*", "User-Agent": f"BebraLand Launcher/{__version__}"},
+                method="GET",
+            )
+            with urllib.request.urlopen(request, timeout=20) as response:
+                data = response.read(MAX_SKIN_RENDER_BYTES + 1)
+        except Exception as exc:
+            self.bridge.log.emit(f"Skin render unavailable: {exc}")
+            return cached_payload
+
+        if len(data) > MAX_SKIN_RENDER_BYTES:
+            self.bridge.log.emit("Skin render unavailable: image too large")
+            return cached_payload
+
+        cache_dir = launcher_data_dir() / "cache" / "skins"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        digest = hashlib.sha256(body_url.encode("utf-8")).hexdigest()
+        path = cache_dir / f"{digest}.png"
+        path.write_bytes(data)
+        cached_avatars["body_url"] = file_url(path)
+        return cached_payload
+
     def run_bg(self, fn: Callable[[], Any], popup: bool = True) -> None:
         def worker() -> None:
             try:
@@ -844,7 +888,8 @@ class LauncherWindow(QWidget):
             return
 
         def task() -> None:
-            self.bridge.skin_profile.emit(self.client.skin_profile(username))
+            payload = self.client.skin_profile(username)
+            self.bridge.skin_profile.emit(self.cache_skin_profile_assets(payload))
 
         self.run_bg(task, popup=False)
 
@@ -1022,6 +1067,8 @@ def main() -> None:
     if run_update_helper_from_cli():
         return
     cleanup_update_cache()
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
+    os.environ.setdefault("QT_QUICK_BACKEND", "software")
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)

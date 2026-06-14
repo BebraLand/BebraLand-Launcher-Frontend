@@ -6,14 +6,19 @@ Item {
 
     property var state: ({})
     property var mods: state.optionalMods || []
+    property string assetsUrl: state.assetsUrl || ""
     signal navigate(string page)
 
     Theme { id: theme }
 
+    function asset(name) {
+        return assetsUrl !== "" ? assetsUrl + "/Images/" + name : ""
+    }
+
     BackButton {
         x: 125
         y: 22
-        assetsUrl: root.state.assetsUrl
+        assetsUrl: root.assetsUrl
         onClicked: root.navigate("home")
     }
 
@@ -44,7 +49,7 @@ Item {
                     SharpImage {
                         width: 28
                         height: 28
-                        source: root.state.assetsUrl + "/Images/folder.svg"
+                        source: root.asset("folder.svg")
                     }
                     Text {
                         text: "Mods"
@@ -90,7 +95,7 @@ Item {
                     SharpImage {
                         width: 48
                         height: 48
-                        source: root.state.assetsUrl + "/Images/folder.svg"
+                        source: root.asset("folder.svg")
                         opacity: 0.7
                     }
 

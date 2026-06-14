@@ -23,12 +23,6 @@ Item {
 
     Theme { id: theme }
 
-    containmentMask: QtObject {
-        function contains(point) {
-            return root.roundedContains(point.x, point.y, root.width, root.height, root.radius)
-        }
-    }
-
     function roundedContains(x, y, width, height, radius) {
         if (x < 0 || y < 0 || x > width || y > height)
             return false

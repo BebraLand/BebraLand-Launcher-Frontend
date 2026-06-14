@@ -5,6 +5,7 @@ Item {
 
     property var state: ({})
     property string page: "home"
+    property string assetsUrl: state.assetsUrl || ""
     signal pageRequested(string page)
 
     width: 100
@@ -18,7 +19,11 @@ Item {
     function iconFor(profile) {
         if (profile && profile.icon_url)
             return profile.icon_url
-        return state.assetsUrl + "/Images/logo.svg"
+        return asset("logo.svg")
+    }
+
+    function asset(name) {
+        return assetsUrl !== "" ? assetsUrl + "/Images/" + name : ""
     }
 
     SharpImage {
@@ -27,7 +32,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: 38
         height: 38
-        source: state.assetsUrl + "/Images/logo.svg"
+        source: root.asset("logo.svg")
     }
 
     Column {
@@ -40,7 +45,7 @@ Item {
             height: 60
             radius: 30
             kind: root.page === "profile" ? "primary" : "secondary"
-            iconSource: root.state.assetsUrl + "/Images/profile.svg"
+            iconSource: root.asset("profile.svg")
             iconSize: 24
             onClicked: root.pageRequested("profile")
         }
@@ -115,7 +120,7 @@ Item {
         height: 60
         radius: 30
         kind: "secondary"
-        iconSource: root.state.assetsUrl + "/Images/logout.svg"
+        iconSource: root.asset("logout.svg")
         iconSize: 22
         onClicked: controller.logout()
     }

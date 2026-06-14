@@ -10,6 +10,7 @@ Item {
     property var server: profile.server || null
     property var serverStatus: profile.server_status || null
     property var news: state.news || []
+    property string assetsUrl: state.assetsUrl || ""
     signal navigate(string page)
 
     Theme { id: theme }
@@ -25,6 +26,10 @@ Item {
 
     function hasServer() {
         return root.server !== null && root.server !== undefined
+    }
+
+    function asset(name) {
+        return assetsUrl !== "" ? assetsUrl + "/Images/" + name : ""
     }
 
     function serverTitle() {
@@ -79,7 +84,7 @@ Item {
                     anchors.centerIn: parent
                     width: 32
                     height: 32
-                    source: root.state.assetsUrl + "/Images/logo.svg"
+                    source: root.asset("logo.svg")
                 }
             }
 
@@ -256,7 +261,7 @@ Item {
                             anchors.centerIn: parent
                             width: 18
                             height: 18
-                            source: root.state.assetsUrl + "/Images/down.svg"
+                            source: root.asset("down.svg")
                         }
                     }
 
@@ -314,7 +319,7 @@ Item {
                     width: 136
                     text: "Settings"
                     kind: "secondary"
-                    iconSource: root.state.assetsUrl + "/Images/settings.svg"
+                    iconSource: root.asset("settings.svg")
                     iconSize: 24
                     font.pixelSize: 16
                     onClicked: root.navigate("settings")
@@ -324,7 +329,7 @@ Item {
                     width: 140
                     text: (root.state.optionalMods || []).length > 0 ? "Mods " + (root.state.optionalMods || []).length : "Mods"
                     kind: "secondary"
-                    iconSource: root.state.assetsUrl + "/Images/document.svg"
+                    iconSource: root.asset("document.svg")
                     iconSize: 23
                     font.pixelSize: 16
                     onClicked: root.navigate("mods")
@@ -431,7 +436,7 @@ Item {
             width: 138
             kind: "additional"
             text: "Website"
-            iconSource: root.state.assetsUrl + "/Images/app.svg"
+            iconSource: root.asset("app.svg")
             iconSize: 22
             onClicked: controller.openUrl("https://bebraland.auuruum.me")
         }

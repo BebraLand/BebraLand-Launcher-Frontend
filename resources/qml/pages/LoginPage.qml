@@ -5,8 +5,13 @@ Item {
     id: root
 
     property var state: ({})
+    property string assetsUrl: state.assetsUrl || ""
 
     Theme { id: theme }
+
+    function asset(name) {
+        return assetsUrl !== "" ? assetsUrl + "/Images/" + name : ""
+    }
 
     FrameCard {
         width: 380
@@ -22,7 +27,7 @@ Item {
                 width: 96
                 height: 72
                 anchors.horizontalCenter: parent.horizontalCenter
-                source: root.state.assetsUrl + "/Images/logo.svg"
+                source: root.asset("logo.svg")
             }
 
             Rectangle {
@@ -87,7 +92,7 @@ Item {
                 width: parent.width
                 kind: "primary"
                 text: "Login Azuriom"
-                iconSource: root.state.assetsUrl + "/Images/login.svg"
+                iconSource: root.asset("login.svg")
                 iconSize: 24
                 onClicked: controller.login(loginField.text, passwordField.text, "")
             }
@@ -147,7 +152,7 @@ Item {
                     width: parent.width
                     kind: "additional"
                     text: "Confirm"
-                    iconSource: root.state.assetsUrl + "/Images/password.svg"
+                    iconSource: root.asset("password.svg")
                     iconSize: 22
                     onClicked: controller.confirm2fa(codeField.text)
                 }

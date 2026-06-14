@@ -8,6 +8,6 @@ GmlButton {
     radius: 25
     kind: "additional"
     text: "Back"
-    iconSource: assetsUrl + "/Images/back.svg"
+    iconSource: assetsUrl !== "" ? assetsUrl + "/Images/back.svg" : ""
     iconSize: 22
 }

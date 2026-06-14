@@ -8,6 +8,7 @@ Item {
     property var state: ({})
     property var ram: state.ram || ({})
     property var windowState: state.window || ({})
+    property string assetsUrl: state.assetsUrl || ""
     signal navigate(string page)
 
     Theme { id: theme }
@@ -15,6 +16,10 @@ Item {
     function asInt(text, fallback) {
         var value = parseInt(text)
         return isNaN(value) ? fallback : value
+    }
+
+    function asset(name) {
+        return assetsUrl !== "" ? assetsUrl + "/Images/" + name : ""
     }
 
     function saveWindow(fullscreen) {
@@ -28,7 +33,7 @@ Item {
     BackButton {
         x: 125
         y: 22
-        assetsUrl: root.state.assetsUrl
+        assetsUrl: root.assetsUrl
         onClicked: root.navigate("home")
     }
 
@@ -59,7 +64,7 @@ Item {
                     SharpImage {
                         width: 28
                         height: 28
-                        source: root.state.assetsUrl + "/Images/ram.svg"
+                        source: root.asset("ram.svg")
                     }
                     Text {
                         text: "Settings RAM"
@@ -169,7 +174,7 @@ Item {
                         SharpImage {
                             width: 28
                             height: 28
-                            source: root.state.assetsUrl + "/Images/window.svg"
+                            source: root.asset("window.svg")
                         }
                         Text {
                             text: "Window size"
@@ -237,7 +242,7 @@ Item {
                         SharpImage {
                             width: 28
                             height: 28
-                            source: root.state.assetsUrl + "/Images/folder.svg"
+                            source: root.asset("folder.svg")
                         }
                         Text {
                             text: "Install folder"
@@ -282,7 +287,7 @@ Item {
                             height: 54
                             radius: 27
                             kind: "additional"
-                            iconSource: root.state.assetsUrl + "/Images/folder.svg"
+                            iconSource: root.asset("folder.svg")
                             iconSize: 22
                             onClicked: controller.openInstallFolder()
                         }
@@ -292,7 +297,7 @@ Item {
                             height: 54
                             radius: 27
                             kind: "additional"
-                            iconSource: root.state.assetsUrl + "/Images/edit.svg"
+                            iconSource: root.asset("edit.svg")
                             iconSize: 22
                             onClicked: controller.chooseInstallFolder()
                         }
