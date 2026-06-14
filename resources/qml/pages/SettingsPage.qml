@@ -7,11 +7,16 @@ Item {
 
     property var state: ({})
     property var ram: state.ram || ({})
+    property int editedRam: ram.value || 2048
     property var windowState: state.window || ({})
     property string assetsUrl: state.assetsUrl || ""
     signal navigate(string page)
 
     Theme { id: theme }
+
+    onRamChanged: {
+        editedRam = ram.value || 2048
+    }
 
     function asInt(text, fallback) {
         var value = parseInt(text)
@@ -20,6 +25,16 @@ Item {
 
     function asset(name) {
         return assetsUrl !== "" ? assetsUrl + "/Images/" + name : ""
+    }
+
+    function roundedRam(value) {
+        return controller.roundRam(value)
+    }
+
+    function updateRam(value) {
+        var rounded = roundedRam(value)
+        editedRam = rounded
+        controller.setRam(rounded)
     }
 
     function saveWindow(fullscreen) {
@@ -96,13 +111,26 @@ Item {
                     from: root.ram.min || 512
                     to: root.ram.max || 16384
                     stepSize: 256
-                    value: root.ram.value || 2048
-                    snapMode: Slider.SnapAlways
-                    live: false
+                    snapMode: Slider.NoSnap
+                    live: true
                     focusPolicy: Qt.NoFocus
 
-                    onMoved: controller.setRam(Math.round(value / stepSize) * stepSize)
-                    onPressedChanged: if (!pressed) controller.setRam(Math.round(value / stepSize) * stepSize)
+                    Connections {
+                        target: root
+                        function onRamChanged() {
+                            if (!ramSlider.pressed)
+                                ramSlider.value = root.ram.value || 2048
+                        }
+                    }
+
+                    Component.onCompleted: value = root.editedRam
+                    onMoved: root.updateRam(value)
+                    onPressedChanged: {
+                        if (!pressed) {
+                            root.updateRam(value)
+                            value = root.editedRam
+                        }
+                    }
 
                     background: Rectangle {
                         x: ramSlider.leftPadding
@@ -137,7 +165,7 @@ Item {
                     FormTextField {
                         width: 125
                         readOnly: true
-                        text: String(root.ram.value || 2048) + " MB"
+                        text: String(root.editedRam) + " MB"
                     }
 
                     Text {

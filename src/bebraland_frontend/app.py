@@ -127,6 +127,15 @@ def clamp_ram_mb(value: Any, maximum: int) -> int:
     return max(MIN_RAM_MB, min(ram_mb, maximum))
 
 
+def snap_ram_mb(value: Any, maximum: int, step: int = 256) -> int:
+    try:
+        ram_mb = float(value)
+    except (TypeError, ValueError):
+        ram_mb = DEFAULT_RECOMMENDED_RAM_MB
+    step = max(1, int(step or 256))
+    return clamp_ram_mb(round(ram_mb / step) * step, maximum)
+
+
 def file_url(path: Path) -> str:
     return QUrl.fromLocalFile(str(path)).toString()
 
@@ -818,6 +827,12 @@ class LauncherWindow(QWidget):
         save_settings(self.settings)
         self.refresh_state()
 
+    @Slot(float, result=int)
+    def roundRam(self, value: float) -> int:
+        shift_pressed = bool(QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier)
+        step = 1024 if shift_pressed else 256
+        return snap_ram_mb(value, self.max_ram_mb, step)
+
     @Slot(int)
     def setRam(self, value: int) -> None:
         profile = self.selected_profile()
@@ -827,7 +842,11 @@ class LauncherWindow(QWidget):
         if not isinstance(overrides, dict):
             overrides = {}
             self.settings["profile_ram_mb"] = overrides
-        overrides[str(profile["slug"])] = clamp_ram_mb(value, self.max_ram_mb)
+        slug = str(profile["slug"])
+        ram_mb = snap_ram_mb(value, self.max_ram_mb)
+        if overrides.get(slug) == ram_mb:
+            return
+        overrides[slug] = ram_mb
         save_settings(self.settings)
         self.refresh_state()
 
