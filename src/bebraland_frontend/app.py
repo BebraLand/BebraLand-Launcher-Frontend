@@ -496,6 +496,7 @@ class LauncherWindow(QWidget):
 
     def set_minecraft_process(self, process: Any) -> None:
         self._minecraft_process = process
+        self.showMinimized()
         self.refresh_state()
         threading.Thread(target=self.wait_for_minecraft_exit, args=(process,), daemon=True).start()
 
