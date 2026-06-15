@@ -287,6 +287,98 @@ Rectangle {
         }
     }
 
+    Item {
+        z: 34
+        anchors.fill: parent
+        visible: root.s.updateNotice && root.s.updateNotice.visible === true
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#66000000"
+        }
+
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 76
+            width: Math.min(470, parent.width - 180)
+            height: 134
+            radius: 18
+            color: "#F0111111"
+            border.color: theme.frameBorder
+            border.width: 1
+
+            Row {
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 16
+
+                Rectangle {
+                    width: 48
+                    height: 48
+                    radius: 14
+                    color: "#12311F"
+                    border.color: "#1F6E3D"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.s.updateNotice && root.s.updateNotice.phase === "restarting" ? ">" : "v"
+                        color: theme.headline
+                        font.family: theme.fontFamily
+                        font.pixelSize: 22
+                        font.weight: Font.Black
+                    }
+                }
+
+                Column {
+                    width: parent.width - 64
+                    spacing: 7
+
+                    Text {
+                        width: parent.width
+                        text: root.s.updateNotice ? (root.s.updateNotice.title || "Launcher update") : "Launcher update"
+                        color: theme.headline
+                        elide: Text.ElideRight
+                        font.family: theme.fontFamily
+                        font.pixelSize: 18
+                        font.weight: Font.Black
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: root.s.updateNotice && root.s.updateNotice.version ? "Version " + root.s.updateNotice.version : ""
+                        color: "#BDF5D0"
+                        elide: Text.ElideRight
+                        font.family: theme.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: root.s.updateNotice ? (root.s.updateNotice.status || "") : ""
+                        color: theme.headline
+                        elide: Text.ElideRight
+                        font.family: theme.fontFamily
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: root.s.updateNotice ? (root.s.updateNotice.details || "") : ""
+                        color: theme.content
+                        wrapMode: Text.WordWrap
+                        font.family: theme.fontFamily
+                        font.pixelSize: 11
+                        font.weight: Font.Medium
+                    }
+                }
+            }
+        }
+    }
+
     Row {
         z: 40
         anchors.top: parent.top

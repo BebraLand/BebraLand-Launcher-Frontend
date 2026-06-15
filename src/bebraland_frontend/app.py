@@ -244,6 +244,7 @@ class Bridge(QObject):
     skin_profile = Signal(dict)
     logged_out = Signal(str)
     profiles_unavailable = Signal()
+    update_notice = Signal(dict)
 
 
 class LauncherWindow(QWidget):
@@ -282,6 +283,7 @@ class LauncherWindow(QWidget):
         self.progress_maximum = 100
         self.progress_visible = False
         self.login_status = ""
+        self.update_notice: dict[str, Any] = {"visible": False}
         self.two_factor_visible = False
         self._last_login_email = ""
         self._last_login_password = ""
@@ -312,6 +314,7 @@ class LauncherWindow(QWidget):
         self.bridge.skin_profile.connect(self.set_skin_profile)
         self.bridge.logged_out.connect(self.handle_logged_out)
         self.bridge.profiles_unavailable.connect(self.mark_profiles_unavailable)
+        self.bridge.update_notice.connect(self.set_update_notice)
 
         self.refresh_state()
         self.build_ui()
@@ -487,6 +490,7 @@ class LauncherWindow(QWidget):
             "optionalMods": self.optional_mod_state(profile),
             "news": self.news,
             "loginStatus": self.login_status,
+            "updateNotice": self.update_notice or {"visible": False},
             "twoFactorVisible": self.two_factor_visible,
             "accountName": self.current_username() or "Not logged in",
             "skinBodyUrl": self.skin_body_url(),
@@ -884,6 +888,10 @@ class LauncherWindow(QWidget):
         self._profiles_loaded = True
         self.refresh_state()
 
+    def set_update_notice(self, payload: dict[str, Any]) -> None:
+        self.update_notice = payload if isinstance(payload, dict) else {}
+        self.refresh_state()
+
     def set_news(self, posts: list[dict[str, Any]]) -> None:
         self.news = posts
         self.refresh_state()
@@ -987,7 +995,18 @@ class LauncherWindow(QWidget):
         def task() -> None:
             release = get_update_release(__version__, manifest_url, self.bridge.log.emit, platform_id(), build_update_id())
             if release:
-                self.bridge.log.emit(f"Update available: {display_version(release)}")
+                version = display_version(release)
+                self.bridge.log.emit(f"Update available: {version}")
+                self.bridge.update_notice.emit(
+                    {
+                        "visible": True,
+                        "title": "Launcher update",
+                        "version": version,
+                        "status": "Preparing update...",
+                        "details": "Keep the launcher open. It will restart automatically.",
+                        "phase": "preparing",
+                    }
+                )
                 self.bridge.install_update.emit(release)
 
         self.run_bg(task, popup=False)
@@ -1342,12 +1361,44 @@ class LauncherWindow(QWidget):
 
     def install_update(self, release: dict[str, Any]) -> None:
         def task() -> None:
-            self.bridge.log.emit(f"Install launcher update {display_version(release)}")
+            version = display_version(release)
+            self.bridge.log.emit(f"Install launcher update {version}")
+            self.bridge.update_notice.emit(
+                {
+                    "visible": True,
+                    "title": "Launcher update",
+                    "version": version,
+                    "status": "Downloading update...",
+                    "details": "The launcher will restart after the download finishes.",
+                    "phase": "downloading",
+                }
+            )
             downloaded = download_release(release, self.bridge.log.emit)
             if can_self_replace():
+                self.bridge.update_notice.emit(
+                    {
+                        "visible": True,
+                        "title": "Launcher update",
+                        "version": version,
+                        "status": "Restarting to apply update...",
+                        "details": "The window will close for a moment and open again.",
+                        "phase": "restarting",
+                    }
+                )
                 self.bridge.log.emit("Restart launcher to apply update")
+                time.sleep(2)
                 self.bridge.replace_update.emit(downloaded)
             else:
+                self.bridge.update_notice.emit(
+                    {
+                        "visible": True,
+                        "title": "Launcher update downloaded",
+                        "version": version,
+                        "status": "Update downloaded",
+                        "details": "Dev mode cannot replace the running launcher automatically.",
+                        "phase": "ready",
+                    }
+                )
                 self.bridge.log.emit("Run downloaded launcher manually in dev mode")
 
         self.run_bg(task)
