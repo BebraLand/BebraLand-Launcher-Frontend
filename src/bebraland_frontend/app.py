@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from PySide6.QtCore import QPoint, Property, QObject, QRect, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QLockFile, QPoint, Property, QObject, QRect, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QCursor, QDesktopServices, QIcon
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QVBoxLayout, QWidget
@@ -29,6 +29,7 @@ from .runtime import (
     instance_dir,
     instance_path,
     launch_minecraft,
+    OperationCancelled,
     prepare_reinstall,
     set_instances_root,
     sync_manifest,
@@ -63,6 +64,7 @@ WS_THICKFRAME = 0x00040000
 WS_MINIMIZEBOX = 0x00020000
 WS_MAXIMIZEBOX = 0x00010000
 WS_SYSMENU = 0x00080000
+ERROR_ALREADY_EXISTS = 183
 WM_NCCALCSIZE = 0x0083
 WM_NCHITTEST = 0x0084
 HTLEFT = 10
@@ -235,6 +237,8 @@ class Bridge(QObject):
     replace_update = Signal(object)
     progress = Signal(int, int, str)
     progress_done = Signal()
+    operation_finished = Signal()
+    minecraft_started = Signal(object)
     news = Signal(list)
     skin_profile = Signal(dict)
     logged_out = Signal(str)
@@ -283,6 +287,9 @@ class LauncherWindow(QWidget):
         self._profiles_loaded = False
         self._profiles_revision = 0
         self._auth_verify_pending = bool(self.client.token)
+        self._pack_operation_running = False
+        self._cancel_event: threading.Event | None = None
+        self._minecraft_process: Any | None = None
         self._state: dict[str, Any] = {}
 
         self.apply_install_root()
@@ -297,6 +304,8 @@ class LauncherWindow(QWidget):
         self.bridge.replace_update.connect(replace_current_exe)
         self.bridge.progress.connect(self.set_progress)
         self.bridge.progress_done.connect(self.clear_progress)
+        self.bridge.operation_finished.connect(self.finish_pack_operation)
+        self.bridge.minecraft_started.connect(self.set_minecraft_process)
         self.bridge.news.connect(self.set_news)
         self.bridge.skin_profile.connect(self.set_skin_profile)
         self.bridge.logged_out.connect(self.handle_logged_out)
@@ -310,6 +319,10 @@ class LauncherWindow(QWidget):
         self.profile_refresh_timer.setInterval(30_000)
         self.profile_refresh_timer.timeout.connect(lambda: self.refresh_profiles(silent=True))
         self.profile_refresh_timer.start()
+        self.minecraft_poll_timer = QTimer(self)
+        self.minecraft_poll_timer.setInterval(2_000)
+        self.minecraft_poll_timer.timeout.connect(self.refresh_minecraft_process)
+        self.minecraft_poll_timer.start()
         self.fetch_news()
         if self.client.token:
             self.verify_saved_login()
@@ -443,6 +456,7 @@ class LauncherWindow(QWidget):
         profile = self.selected_profile()
         authenticated = bool(self.client.token and self.auth_user)
         bootstrapping = self._auth_verify_pending or (authenticated and not self._profiles_loaded)
+        minecraft_running = self.minecraft_running()
         self._state = {
             "authenticated": authenticated,
             "bootstrapping": bootstrapping,
@@ -457,6 +471,10 @@ class LauncherWindow(QWidget):
             "progressValue": self.progress_value,
             "progressMaximum": self.progress_maximum,
             "progressVisible": self.progress_visible,
+            "operationRunning": self._pack_operation_running,
+            "minecraftRunning": minecraft_running,
+            "playDisabled": self._pack_operation_running or minecraft_running,
+            "canCancelDownload": self._cancel_event is not None and not self._cancel_event.is_set(),
             "defaultBackgroundUrl": file_url(DEFAULT_BACKGROUND_PATH),
             "assetsUrl": file_url(GML_ASSETS_DIR),
             "profiles": [self.public_profile(profile_item) for profile_item in self.profiles],
@@ -473,6 +491,22 @@ class LauncherWindow(QWidget):
             "skinBodyUrl": self.skin_body_url(),
         }
         self.stateChanged.emit()
+
+    def minecraft_running(self) -> bool:
+        process = self._minecraft_process
+        return bool(process is not None and process.poll() is None)
+
+    def set_minecraft_process(self, process: Any) -> None:
+        self._minecraft_process = process
+        self.refresh_state()
+
+    def refresh_minecraft_process(self) -> None:
+        if self._minecraft_process is None:
+            return
+        if self._minecraft_process.poll() is None:
+            return
+        self._minecraft_process = None
+        self.refresh_state()
 
     def public_profile(self, profile: dict[str, Any] | None) -> dict[str, Any]:
         if not profile:
@@ -704,6 +738,34 @@ class LauncherWindow(QWidget):
                     self.bridge.log.emit(f"Error: {exc}")
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def run_pack_operation(self, fn: Callable[[threading.Event], Any]) -> None:
+        if self._pack_operation_running:
+            self.log_line("Launcher already working")
+            return
+        cancel_event = threading.Event()
+        self._pack_operation_running = True
+        self._cancel_event = cancel_event
+        self.refresh_state()
+
+        def task() -> None:
+            try:
+                fn(cancel_event)
+            except OperationCancelled as exc:
+                self.bridge.log.emit(str(exc))
+                self.bridge.progress_done.emit()
+            except Exception as exc:
+                self.bridge.error.emit(str(exc))
+                self.bridge.progress_done.emit()
+            finally:
+                self.bridge.operation_finished.emit()
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def finish_pack_operation(self) -> None:
+        self._pack_operation_running = False
+        self._cancel_event = None
+        self.refresh_state()
 
     def configure_client_events(self) -> None:
         self.client.set_event_handlers(profiles_changed=self.bridge.profiles.emit, log=self.bridge.log.emit)
@@ -1123,6 +1185,12 @@ class LauncherWindow(QWidget):
 
     @Slot()
     def launchSelected(self) -> None:
+        if self._pack_operation_running:
+            self.log_line("Launcher already working")
+            return
+        if self.minecraft_running():
+            self.log_line("Minecraft already running")
+            return
         slug = self.selected_slug()
         if not slug:
             QMessageBox.warning(self, "BebraLand", "Choose pack first")
@@ -1143,19 +1211,26 @@ class LauncherWindow(QWidget):
                 return
         selected_optional_mod_ids = self.selected_optional_mod_ids(profile)
 
-        def task() -> None:
+        def task(cancel_event: threading.Event) -> None:
             self.bridge.log.emit(f"Fetch manifest {slug}")
             manifest = self.client.latest_manifest(slug)
+            if cancel_event.is_set():
+                raise OperationCancelled("Download cancelled")
             game_dir = instance_dir(manifest["profile"]["slug"])
             installed_version = install_mod_loader(manifest, game_dir, self.bridge.log.emit, self.bridge.progress.emit)
+            if cancel_event.is_set():
+                raise OperationCancelled("Download cancelled")
             game_dir = sync_manifest(
                 manifest,
                 self.client.server_url,
                 self.bridge.log.emit,
                 self.bridge.progress.emit,
                 selected_optional_mod_ids=selected_optional_mod_ids,
+                cancelled=cancel_event.is_set,
             )
-            launch_minecraft(
+            if cancel_event.is_set():
+                raise OperationCancelled("Download cancelled")
+            process = launch_minecraft(
                 manifest,
                 game_dir,
                 self.current_username() or "BebraPlayer",
@@ -1168,12 +1243,16 @@ class LauncherWindow(QWidget):
                 minecraft_profile=self.minecraft_profile,
                 window_settings=self.window_state(),
             )
+            self.bridge.minecraft_started.emit(process)
             self.bridge.progress_done.emit()
 
-        self.run_bg(task)
+        self.run_pack_operation(task)
 
     @Slot()
     def reinstallSelected(self) -> None:
+        if self._pack_operation_running:
+            self.log_line("Launcher already working")
+            return
         slug = self.selected_slug()
         if not slug:
             return
@@ -1190,21 +1269,34 @@ class LauncherWindow(QWidget):
             return
         selected_optional_mod_ids = self.selected_optional_mod_ids(profile)
 
-        def task() -> None:
+        def task(cancel_event: threading.Event) -> None:
             manifest = self.client.latest_manifest(slug)
+            if cancel_event.is_set():
+                raise OperationCancelled("Download cancelled")
             game_dir = prepare_reinstall(manifest, self.bridge.log.emit, selected_optional_mod_ids=selected_optional_mod_ids)
             install_mod_loader(manifest, game_dir, self.bridge.log.emit, self.bridge.progress.emit)
+            if cancel_event.is_set():
+                raise OperationCancelled("Download cancelled")
             sync_manifest(
                 manifest,
                 self.client.server_url,
                 self.bridge.log.emit,
                 self.bridge.progress.emit,
                 selected_optional_mod_ids=selected_optional_mod_ids,
+                cancelled=cancel_event.is_set,
             )
             self.bridge.log.emit(f"Reinstalled {slug}")
             self.bridge.progress_done.emit()
 
-        self.run_bg(task)
+        self.run_pack_operation(task)
+
+    @Slot()
+    def cancelDownload(self) -> None:
+        if not self._cancel_event or self._cancel_event.is_set():
+            return
+        self._cancel_event.set()
+        self.log_line("Cancelling download...")
+        self.refresh_state()
 
     @Slot()
     def deleteSelected(self) -> None:
@@ -1257,6 +1349,28 @@ def main() -> None:
     app = QApplication(sys.argv)
     if APP_ICON_PATH.exists():
         app.setWindowIcon(QIcon(str(APP_ICON_PATH)))
+    instance_mutex = None
+    instance_lock: QLockFile | None = None
+    if sys.platform.startswith("win"):
+        instance_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "BebraLandLauncher.SingleInstance")
+        if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            QMessageBox.information(None, "BebraLand Launcher", "BebraLand Launcher is already running.")
+            if instance_mutex:
+                ctypes.windll.kernel32.CloseHandle(instance_mutex)
+            return
+    else:
+        lock_path = launcher_data_dir() / "BebraLandLauncher.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        instance_lock = QLockFile(str(lock_path))
+        if not instance_lock.tryLock(100):
+            QMessageBox.information(None, "BebraLand Launcher", "BebraLand Launcher is already running.")
+            return
     window = LauncherWindow()
     window.show()
-    sys.exit(app.exec())
+    try:
+        sys.exit(app.exec())
+    finally:
+        if instance_lock:
+            instance_lock.unlock()
+        if instance_mutex:
+            ctypes.windll.kernel32.CloseHandle(instance_mutex)

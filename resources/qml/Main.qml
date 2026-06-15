@@ -175,13 +175,45 @@ Rectangle {
             anchors.top: parent.top
             anchors.topMargin: 10
             anchors.leftMargin: 18
-            anchors.rightMargin: 18
+            anchors.rightMargin: root.s.canCancelDownload ? 96 : 18
             text: root.s.progressTitle || root.s.progressText || root.s.status || ""
             color: theme.headline
             elide: Text.ElideRight
             font.family: theme.fontFamily
             font.pixelSize: 12
             font.weight: Font.Bold
+        }
+
+        Rectangle {
+            id: progressCancel
+            visible: root.s.canCancelDownload
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 8
+            anchors.rightMargin: 12
+            width: 76
+            height: 24
+            radius: 12
+            color: cancelMouse.containsMouse ? "#241817" : "#171313"
+            border.color: cancelMouse.containsMouse ? theme.danger : theme.frameBorder
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: "Cancel"
+                color: cancelMouse.containsMouse ? theme.headline : "#FFAA9A"
+                font.family: theme.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Bold
+            }
+
+            MouseArea {
+                id: cancelMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: controller.cancelDownload()
+            }
         }
 
         Row {

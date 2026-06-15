@@ -162,8 +162,10 @@ Item {
                     width: 156
                     height: 50
                     radius: 25
-                    color: playMouse.active ? theme.primaryHover : theme.primary
+                    color: !enabled ? theme.formHover : (playMouse.active ? theme.primaryHover : theme.primary)
                     clip: true
+                    enabled: !root.state.playDisabled
+                    opacity: enabled ? 1 : 0.55
 
                     property bool mainActive: playMouse.active && playMouse.mouseX < 113
                     property bool dropActive: playMouse.active && playMouse.mouseX >= 113
@@ -191,6 +193,7 @@ Item {
                         id: playMouse
                         anchors.fill: parent
                         hoverEnabled: true
+                        enabled: playSplit.enabled
                         cursorShape: active ? Qt.PointingHandCursor : Qt.ArrowCursor
                         acceptedButtons: Qt.LeftButton
 

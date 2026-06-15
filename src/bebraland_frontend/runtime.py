@@ -23,6 +23,7 @@ from .config import launcher_data_dir
 
 Status = Callable[[str], None]
 Progress = Callable[[int, int, str], None]
+CancelCheck = Callable[[], bool]
 PROGRESS_SCALE = 10_000
 SYSTEM_PROTECTED_LOCAL_PATTERNS = [
     ".bebraland/**",
@@ -59,6 +60,15 @@ SHARED_MINECRAFT_DIR_NAME = ".shared"
 AUTHLIB_ARTIFACT_URL = "https://authlib-injector.yushi.moe/artifact/latest.json"
 DISABLED_ENV_VALUES = {"0", "false", "no", "off", "disabled"}
 _instances_root_override: Path | None = None
+
+
+class OperationCancelled(RuntimeError):
+    pass
+
+
+def check_cancel(cancelled: CancelCheck | None) -> None:
+    if cancelled and cancelled():
+        raise OperationCancelled("Download cancelled")
 
 
 def set_instances_root(path: str | Path | None) -> None:
@@ -767,28 +777,36 @@ def download_file(
     progress_tracker: ByteProgressTracker | None = None,
     progress_label: str | None = None,
     progress_key: str | None = None,
+    cancelled: CancelCheck | None = None,
 ) -> None:
     tmp = dest.with_suffix(dest.suffix + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
     label = progress_label or f"Download {dest.name}"
     if not progress_tracker or not progress:
         status(label)
+    check_cancel(cancelled)
     with requests.get(url, stream=True, timeout=60) as response:
         response.raise_for_status()
         total = int(response.headers.get("content-length") or 0)
         done = 0
         if progress_tracker:
             progress_tracker.emit(progress, done, total, label, progress_key)
-        with tmp.open("wb") as handle:
-            for chunk in response.iter_content(chunk_size=1024 * 512):
-                if chunk:
-                    handle.write(chunk)
-                    done += len(chunk)
-                    if progress_tracker:
-                        progress_tracker.emit(progress, done, total, label, progress_key)
-                    elif progress and total:
-                        detail = f"{label} - {format_bytes(done)} / {format_bytes(total)}"
-                        progress(done, total, detail)
+        try:
+            with tmp.open("wb") as handle:
+                for chunk in response.iter_content(chunk_size=1024 * 512):
+                    check_cancel(cancelled)
+                    if chunk:
+                        handle.write(chunk)
+                        done += len(chunk)
+                        if progress_tracker:
+                            progress_tracker.emit(progress, done, total, label, progress_key)
+                        elif progress and total:
+                            detail = f"{label} - {format_bytes(done)} / {format_bytes(total)}"
+                            progress(done, total, detail)
+        except OperationCancelled:
+            tmp.unlink(missing_ok=True)
+            raise
+    check_cancel(cancelled)
     actual = sha256_file(tmp)
     if actual != expected_sha256:
         tmp.unlink(missing_ok=True)
@@ -832,7 +850,9 @@ def sync_manifest(
     status: Status,
     progress: Progress | None = None,
     selected_optional_mod_ids: set[str] | None = None,
+    cancelled: CancelCheck | None = None,
 ) -> Path:
+    check_cancel(cancelled)
     profile = manifest["profile"]
     game_dir = instance_dir(profile["slug"])
     cleanup_legacy_instance_runtime(game_dir, status)
@@ -864,6 +884,7 @@ def sync_manifest(
         download_progress.emit(progress, 0, total_download_bytes, "Download pack files")
 
     def fetch_pack_file(download: tuple[str, dict[str, Any], Path, str]) -> tuple[str, str]:
+        check_cancel(cancelled)
         rel, item, target, stat_key = download
         url = absolute_url(server_url, item["url"])
         download_file(
@@ -875,6 +896,7 @@ def sync_manifest(
             progress_tracker=download_progress,
             progress_label=f"Download {rel}",
             progress_key=rel,
+            cancelled=cancelled,
         )
         return rel, stat_key
 
@@ -890,6 +912,7 @@ def sync_manifest(
                 _, stat_key = future.result()
                 stats[stat_key] += 1
 
+    check_cancel(cancelled)
     stats["removed"] = cleanup_extra_files(game_dir, set(wanted), rules, status, disabled_optional)
 
     saved_manifest = dict(manifest)
