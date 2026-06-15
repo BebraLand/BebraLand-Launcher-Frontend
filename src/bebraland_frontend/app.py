@@ -606,18 +606,19 @@ class LauncherWindow(QWidget):
             mod_id = self.optional_mod_id(mod)
             if not mod_id:
                 continue
-            details = ["default on" if mod.get("default_enabled") else "default off"]
             requires = [str(item) for item in mod.get("requires") or []]
-            if requires:
-                details.append(f"requires: {', '.join(requires)}")
+            conflicts = [str(item) for item in mod.get("conflicts") or []]
             description = str(mod.get("description") or "").strip()
-            if description:
-                details.append(description)
             result.append(
                 {
                     "id": mod_id,
                     "name": self.optional_mod_name(mod),
-                    "details": " | ".join(details),
+                    "description": description,
+                    "defaultEnabled": bool(mod.get("default_enabled")),
+                    "requires": requires,
+                    "requiresText": ", ".join(requires),
+                    "conflicts": conflicts,
+                    "conflictsText": ", ".join(conflicts),
                     "enabled": mod_id in selected,
                 }
             )
