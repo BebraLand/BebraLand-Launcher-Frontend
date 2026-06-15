@@ -239,6 +239,7 @@ class Bridge(QObject):
     progress_done = Signal()
     operation_finished = Signal()
     minecraft_started = Signal(object)
+    minecraft_finished = Signal(object)
     news = Signal(list)
     skin_profile = Signal(dict)
     logged_out = Signal(str)
@@ -306,6 +307,7 @@ class LauncherWindow(QWidget):
         self.bridge.progress_done.connect(self.clear_progress)
         self.bridge.operation_finished.connect(self.finish_pack_operation)
         self.bridge.minecraft_started.connect(self.set_minecraft_process)
+        self.bridge.minecraft_finished.connect(self.clear_minecraft_process)
         self.bridge.news.connect(self.set_news)
         self.bridge.skin_profile.connect(self.set_skin_profile)
         self.bridge.logged_out.connect(self.handle_logged_out)
@@ -319,10 +321,6 @@ class LauncherWindow(QWidget):
         self.profile_refresh_timer.setInterval(30_000)
         self.profile_refresh_timer.timeout.connect(lambda: self.refresh_profiles(silent=True))
         self.profile_refresh_timer.start()
-        self.minecraft_poll_timer = QTimer(self)
-        self.minecraft_poll_timer.setInterval(2_000)
-        self.minecraft_poll_timer.timeout.connect(self.refresh_minecraft_process)
-        self.minecraft_poll_timer.start()
         self.fetch_news()
         if self.client.token:
             self.verify_saved_login()
@@ -499,11 +497,17 @@ class LauncherWindow(QWidget):
     def set_minecraft_process(self, process: Any) -> None:
         self._minecraft_process = process
         self.refresh_state()
+        threading.Thread(target=self.wait_for_minecraft_exit, args=(process,), daemon=True).start()
 
-    def refresh_minecraft_process(self) -> None:
-        if self._minecraft_process is None:
-            return
-        if self._minecraft_process.poll() is None:
+    def wait_for_minecraft_exit(self, process: Any) -> None:
+        try:
+            process.wait()
+        except Exception as exc:
+            self.bridge.log.emit(f"Minecraft process watch stopped: {exc}")
+        self.bridge.minecraft_finished.emit(process)
+
+    def clear_minecraft_process(self, process: Any) -> None:
+        if self._minecraft_process is not process:
             return
         self._minecraft_process = None
         self.refresh_state()
