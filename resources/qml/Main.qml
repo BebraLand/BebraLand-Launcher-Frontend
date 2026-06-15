@@ -162,25 +162,74 @@ Rectangle {
         anchors.topMargin: 18
         anchors.horizontalCenter: parent.horizontalCenter
         width: Math.min(520, parent.width - 220)
-        height: 54
+        height: 66
         radius: 18
         color: theme.frame
         border.color: theme.frameBorder
         border.width: 1
 
         Text {
+            id: progressTitle
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.topMargin: 10
             anchors.leftMargin: 18
             anchors.rightMargin: 18
-            text: root.s.progressText || root.s.status || ""
+            text: root.s.progressTitle || root.s.progressText || root.s.status || ""
             color: theme.headline
             elide: Text.ElideRight
             font.family: theme.fontFamily
             font.pixelSize: 12
             font.weight: Font.Bold
+        }
+
+        Row {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: progressTitle.bottom
+            anchors.topMargin: 3
+            anchors.leftMargin: 18
+            anchors.rightMargin: 18
+            height: 14
+            spacing: 8
+
+            Text {
+                width: parent.width - progressSpeed.width - progressEta.width - parent.spacing * 2
+                height: parent.height
+                text: root.s.progressAmount || root.s.progressDetails || ""
+                color: theme.content
+                elide: Text.ElideRight
+                font.family: theme.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Medium
+            }
+
+            Text {
+                id: progressSpeed
+                width: 76
+                height: parent.height
+                text: root.s.progressSpeed || ""
+                color: theme.content
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideRight
+                font.family: theme.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Medium
+            }
+
+            Text {
+                id: progressEta
+                width: 86
+                height: parent.height
+                text: root.s.progressEta || ""
+                color: theme.content
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideRight
+                font.family: theme.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Medium
+            }
         }
 
         Rectangle {

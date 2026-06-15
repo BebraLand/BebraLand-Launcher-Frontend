@@ -268,6 +268,11 @@ class LauncherWindow(QWidget):
         self.skin_cache_nonce = 0
         self.status_text = f"BebraLand Launcher {__version__}"
         self.progress_text = ""
+        self.progress_title = ""
+        self.progress_details = ""
+        self.progress_amount = ""
+        self.progress_speed = ""
+        self.progress_eta = ""
         self.progress_value = 0
         self.progress_maximum = 100
         self.progress_visible = False
@@ -444,6 +449,11 @@ class LauncherWindow(QWidget):
             "version": __version__,
             "status": self.status_text,
             "progressText": self.progress_text,
+            "progressTitle": self.progress_title,
+            "progressDetails": self.progress_details,
+            "progressAmount": self.progress_amount,
+            "progressSpeed": self.progress_speed,
+            "progressEta": self.progress_eta,
             "progressValue": self.progress_value,
             "progressMaximum": self.progress_maximum,
             "progressVisible": self.progress_visible,
@@ -727,7 +737,14 @@ class LauncherWindow(QWidget):
         self.progress_value = max(0, value)
         self.progress_maximum = max(1, maximum)
         self.progress_text = label
-        self.status_text = label.split(" - ", 1)[0] if label else self.status_text
+        title, separator, details = label.partition(" - ")
+        self.progress_title = title or label
+        self.progress_details = details if separator else ""
+        detail_parts = self.progress_details.split(" - ") if self.progress_details else []
+        self.progress_amount = detail_parts[0] if len(detail_parts) > 0 else ""
+        self.progress_speed = detail_parts[1] if len(detail_parts) > 1 else ""
+        self.progress_eta = detail_parts[2] if len(detail_parts) > 2 else ""
+        self.status_text = self.progress_title or self.status_text
         self.refresh_state()
 
     def clear_progress(self) -> None:
@@ -735,6 +752,11 @@ class LauncherWindow(QWidget):
         self.progress_value = 0
         self.progress_maximum = 100
         self.progress_text = ""
+        self.progress_title = ""
+        self.progress_details = ""
+        self.progress_amount = ""
+        self.progress_speed = ""
+        self.progress_eta = ""
         self.refresh_state()
 
     def set_profiles(self, profiles: list[dict[str, Any]]) -> None:
