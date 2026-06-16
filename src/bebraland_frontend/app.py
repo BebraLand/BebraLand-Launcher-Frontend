@@ -29,8 +29,10 @@ from .runtime import (
     instance_dir,
     instance_path,
     launch_minecraft,
+    offline_installed_version,
     OperationCancelled,
     prepare_reinstall,
+    read_old_manifest,
     set_instances_root,
     sync_manifest,
 )
@@ -243,6 +245,7 @@ class Bridge(QObject):
     news = Signal(list)
     skin_profile = Signal(dict)
     logged_out = Signal(str)
+    saved_login_unverified = Signal(str)
     profiles_unavailable = Signal()
     update_notice = Signal(dict)
 
@@ -266,7 +269,8 @@ class LauncherWindow(QWidget):
         self.client = ApiClient(self.settings.get("server_url", DEFAULT_SERVER_URL), self.settings.get("access_token"))
         self.auth_user: dict[str, Any] | None = self.settings.get("user")
         self.minecraft_profile: dict[str, Any] | None = self.settings.get("minecraft_profile")
-        self.profiles: list[dict[str, Any]] = []
+        cached_profiles = self.settings.get("cached_profiles")
+        self.profiles: list[dict[str, Any]] = cached_profiles if isinstance(cached_profiles, list) else []
         self.selected_profile_slug = str(self.settings.get("selected_profile") or "")
         self.max_ram_mb = launcher_ram_limit_mb()
         self.news: list[dict[str, Any]] = []
@@ -287,7 +291,8 @@ class LauncherWindow(QWidget):
         self.two_factor_visible = False
         self._last_login_email = ""
         self._last_login_password = ""
-        self._profiles_loaded = False
+        self._profiles_loaded = bool(self.profiles)
+        self._offline_mode = bool(self.profiles)
         self._profiles_revision = 0
         self._auth_verify_pending = bool(self.client.token)
         self._pack_operation_running = False
@@ -313,6 +318,7 @@ class LauncherWindow(QWidget):
         self.bridge.news.connect(self.set_news)
         self.bridge.skin_profile.connect(self.set_skin_profile)
         self.bridge.logged_out.connect(self.handle_logged_out)
+        self.bridge.saved_login_unverified.connect(self.handle_saved_login_unverified)
         self.bridge.profiles_unavailable.connect(self.mark_profiles_unavailable)
         self.bridge.update_notice.connect(self.set_update_notice)
 
@@ -461,6 +467,7 @@ class LauncherWindow(QWidget):
         has_selected_profile = profile is not None
         self._state = {
             "authenticated": authenticated,
+            "offlineMode": self._offline_mode,
             "bootstrapping": bootstrapping,
             "version": __version__,
             "status": self.status_text,
@@ -527,6 +534,7 @@ class LauncherWindow(QWidget):
             **profile,
             "icon_url": self.absolute_profile_url(profile, "icon_url"),
             "background_url": self.absolute_profile_url(profile, "background_url"),
+            "offline": self._offline_mode,
         }
 
     def absolute_profile_url(self, profile: dict[str, Any], field: str) -> str:
@@ -845,9 +853,12 @@ class LauncherWindow(QWidget):
 
     def apply_profiles(self, profiles: list[dict[str, Any]], update_status: bool) -> None:
         self._profiles_loaded = True
+        self._offline_mode = False
         self._profiles_revision += 1
         revision = self._profiles_revision
         self.profiles = profiles
+        self.settings["cached_profiles"] = profiles
+        save_settings(self.settings)
         self.warm_profile_asset_cache(profiles, revision)
         if not self.selected_profile_slug and profiles:
             self.selected_profile_slug = str(profiles[0].get("slug") or "")
@@ -886,6 +897,16 @@ class LauncherWindow(QWidget):
 
     def mark_profiles_unavailable(self) -> None:
         self._profiles_loaded = True
+        cached_profiles = self.settings.get("cached_profiles")
+        if isinstance(cached_profiles, list) and cached_profiles:
+            self._offline_mode = True
+            self.profiles = cached_profiles
+            if not self.selected_profile_slug:
+                self.selected_profile_slug = str(cached_profiles[0].get("slug") or "")
+            self.status_text = "Backend offline - cached packs available"
+        else:
+            self._offline_mode = False
+            self.status_text = "Backend offline - no cached packs"
         self.refresh_state()
 
     def set_update_notice(self, payload: dict[str, Any]) -> None:
@@ -929,6 +950,11 @@ class LauncherWindow(QWidget):
         self.login_status = reason
         self.refresh_state()
 
+    def handle_saved_login_unverified(self, reason: str = "") -> None:
+        self._auth_verify_pending = False
+        self.status_text = reason or "Backend offline - saved login kept"
+        self.mark_profiles_unavailable()
+
     def refresh_profiles(self, silent: bool = False) -> None:
         self.reset_client()
 
@@ -947,6 +973,16 @@ class LauncherWindow(QWidget):
                 raise
 
         self.run_bg(task, popup=False)
+
+    def cached_manifest_for_slug(self, slug: str) -> dict[str, Any]:
+        game_dir = instance_dir(slug)
+        manifest = read_old_manifest(game_dir)
+        if not manifest:
+            raise RuntimeError("Backend offline and no cached manifest for this pack. Launch once online first.")
+        profile = manifest.get("profile")
+        if not isinstance(profile, dict) or str(profile.get("slug") or "") != slug:
+            raise RuntimeError("Cached manifest does not match selected pack")
+        return manifest
 
     def fetch_news(self) -> None:
         def task() -> None:
@@ -979,8 +1015,14 @@ class LauncherWindow(QWidget):
         def task() -> None:
             try:
                 payload = self.client.azuriom_verify(token)
-            except Exception:
-                self.bridge.logged_out.emit("Saved login expired")
+            except WebSocketApiError as exc:
+                if exc.status_code in {401, 403}:
+                    self.bridge.logged_out.emit("Saved login expired")
+                    return
+                self.bridge.saved_login_unverified.emit(f"Backend auth unavailable - saved login kept: {exc}")
+                return
+            except Exception as exc:
+                self.bridge.saved_login_unverified.emit(f"Backend offline - saved login kept: {exc}")
                 return
             payload["access_token"] = token
             self.bridge.auth.emit(payload)
@@ -1249,24 +1291,36 @@ class LauncherWindow(QWidget):
         selected_optional_mod_ids = self.selected_optional_mod_ids(profile)
 
         def task(cancel_event: threading.Event) -> None:
-            self.bridge.log.emit(f"Fetch manifest {slug}")
-            manifest = self.client.latest_manifest(slug)
+            offline_launch = False
+            try:
+                self.bridge.log.emit(f"Fetch manifest {slug}")
+                manifest = self.client.latest_manifest(slug)
+                self._offline_mode = False
+            except Exception as exc:
+                self.bridge.log.emit(f"Backend offline, try cached pack: {exc}")
+                manifest = self.cached_manifest_for_slug(slug)
+                offline_launch = True
+                self._offline_mode = True
             if cancel_event.is_set():
                 raise OperationCancelled("Download cancelled")
             game_dir = instance_dir(manifest["profile"]["slug"])
-            installed_version = install_mod_loader(manifest, game_dir, self.bridge.log.emit, self.bridge.progress.emit)
-            if cancel_event.is_set():
-                raise OperationCancelled("Download cancelled")
-            game_dir = sync_manifest(
-                manifest,
-                self.client.server_url,
-                self.bridge.log.emit,
-                self.bridge.progress.emit,
-                selected_optional_mod_ids=selected_optional_mod_ids,
-                cancelled=cancel_event.is_set,
-            )
-            if cancel_event.is_set():
-                raise OperationCancelled("Download cancelled")
+            if offline_launch:
+                installed_version = offline_installed_version(manifest, self.bridge.log.emit)
+                self.bridge.log.emit("Offline launch uses cached pack files; no sync")
+            else:
+                installed_version = install_mod_loader(manifest, game_dir, self.bridge.log.emit, self.bridge.progress.emit)
+                if cancel_event.is_set():
+                    raise OperationCancelled("Download cancelled")
+                game_dir = sync_manifest(
+                    manifest,
+                    self.client.server_url,
+                    self.bridge.log.emit,
+                    self.bridge.progress.emit,
+                    selected_optional_mod_ids=selected_optional_mod_ids,
+                    cancelled=cancel_event.is_set,
+                )
+                if cancel_event.is_set():
+                    raise OperationCancelled("Download cancelled")
             process = launch_minecraft(
                 manifest,
                 game_dir,

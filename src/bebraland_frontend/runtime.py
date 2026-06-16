@@ -1007,12 +1007,36 @@ def legacy_authlib_cache_dir() -> Path:
 
 
 def fetch_authlib_metadata(api_url: str, status: Status) -> str:
-    status("Fetch authlib metadata")
-    with requests.get(api_url, timeout=20) as response:
-        response.raise_for_status()
-        metadata = response.json()
-    compact = json.dumps(metadata, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    return base64.b64encode(compact).decode("ascii")
+    cache_path = authlib_metadata_cache_path(api_url)
+    try:
+        status("Fetch authlib metadata")
+        with requests.get(api_url, timeout=20) as response:
+            response.raise_for_status()
+            metadata = response.json()
+        compact = json.dumps(metadata, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        encoded = base64.b64encode(compact).decode("ascii")
+        cache_path.write_text(encoded, encoding="utf-8")
+        return encoded
+    except Exception as exc:
+        if cache_path.is_file():
+            status(f"Use cached authlib metadata after backend check failed: {exc}")
+            return cache_path.read_text(encoding="utf-8").strip()
+        raise
+
+
+def authlib_metadata_cache_path(api_url: str) -> Path:
+    digest = hashlib.sha256(api_url.encode("utf-8")).hexdigest()
+    return authlib_cache_dir() / f"metadata-{digest}.b64"
+
+
+def offline_installed_version(manifest: dict[str, Any], status: Status) -> str:
+    profile = manifest["profile"]
+    minecraft_dir = shared_minecraft_dir()
+    installed_version = installed_version_id(profile)
+    if not version_is_installed(minecraft_dir, installed_version):
+        raise RuntimeError("Offline launch unavailable: Minecraft/modloader is not installed locally yet")
+    status(f"Use cached Minecraft/modloader: {installed_version}")
+    return installed_version
 
 
 def ensure_authlib_injector(status: Status, progress: Progress | None = None) -> Path:
