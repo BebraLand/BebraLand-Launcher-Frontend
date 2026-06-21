@@ -41,7 +41,7 @@ a = Analysis(
         ('resources', 'resources'),
     ],
     hiddenimports=['ssl', '_ssl', '_hashlib'],
-    hookspath=[],
+    hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],

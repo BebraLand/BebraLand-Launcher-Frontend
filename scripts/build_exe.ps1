@@ -5,7 +5,7 @@ $env:UV_PYTHON_INSTALL_DIR = Join-Path $PSScriptRoot "..\.uv-python"
 uv python install 3.13
 uv sync --extra build
 uv run python scripts\write_build_info.py
-uv run pyinstaller --noconfirm BebraLandLauncher.spec
-uv run pyinstaller --noconfirm BebraLandUpdater.spec
+uv run pyinstaller --noconfirm --clean BebraLandLauncher.spec
+uv run pyinstaller --noconfirm --clean BebraLandUpdater.spec
 Write-Host ""
 Write-Host "Done: $(Join-Path (Get-Location) 'dist')"
