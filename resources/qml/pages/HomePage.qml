@@ -133,6 +133,7 @@ Item {
                 StatusBadge { text: root.state.offlineMode ? "Offline cache" : "Available" }
                 StatusBadge { text: root.value(["minecraft_version", "game_version"], "1.21.1") }
                 StatusBadge { text: root.state.offlineMode ? "No sync" : root.value(["state", "status"], "Ready") }
+                StatusBadge { visible: !!root.profile.opening_mode; text: "Opening" }
             }
 
             Text {
@@ -147,7 +148,7 @@ Item {
 
             Text {
                 width: Math.min(parent.width, 500)
-                text: root.hasProfile ? (root.state.offlineMode ? "Backend unavailable. Launch uses already downloaded local pack files." : root.value(["description", "slug"], "")) : "All packs are disabled or not created yet."
+                text: root.hasProfile ? (!root.profile.launch_allowed && root.profile.opening_mode ? "Opening Mode: files are available to download. Launch is reserved for launcher admins." : (root.state.offlineMode ? "Backend unavailable. Launch uses already downloaded local pack files." : root.value(["description", "slug"], ""))) : "All packs are disabled or not created yet."
                 color: theme.content
                 wrapMode: Text.WordWrap
                 lineHeight: 1.35
@@ -239,7 +240,7 @@ Item {
                             }
 
                             Text {
-                                text: "Play"
+                                text: root.profile.opening_mode && !root.profile.launch_allowed ? "Opening" : "Play"
                                 color: theme.headline
                                 font.family: theme.fontFamily
                                 font.pixelSize: 16

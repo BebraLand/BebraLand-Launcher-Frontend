@@ -539,6 +539,7 @@ class LauncherWindow(QWidget):
         bootstrapping = self._auth_verify_pending or (authenticated and not self._profiles_loaded)
         minecraft_running = self.minecraft_running()
         has_selected_profile = profile is not None
+        launch_allowed = bool(profile and profile.get("launch_allowed", not bool(profile.get("opening_mode"))))
         self._state = {
             "authenticated": authenticated,
             "offlineMode": self._offline_mode,
@@ -557,7 +558,7 @@ class LauncherWindow(QWidget):
             "operationRunning": self._pack_operation_running,
             "minecraftRunning": minecraft_running,
             "hasSelectedProfile": has_selected_profile,
-            "playDisabled": not has_selected_profile or self._pack_operation_running or minecraft_running,
+            "playDisabled": not has_selected_profile or not launch_allowed or self._pack_operation_running or minecraft_running,
             "canCancelDownload": self._cancel_event is not None and not self._cancel_event.is_set(),
             "defaultBackgroundUrl": file_url(DEFAULT_BACKGROUND_PATH),
             "assetsUrl": file_url(GML_ASSETS_DIR),
@@ -1420,6 +1421,13 @@ class LauncherWindow(QWidget):
             QMessageBox.warning(self, "BebraLand", "Login to BebraLand first")
             return
         profile = self.selected_profile()
+        if profile and not bool(profile.get("launch_allowed", not bool(profile.get("opening_mode")))):
+            QMessageBox.information(
+                self,
+                "BebraLand Opening Mode",
+                "This pack is in Opening Mode. Files can be downloaded, but launch is available only to launcher admins.",
+            )
+            return
         ram_mb = self.profile_ram_value(profile)
         recommended = self.recommended_ram_mb(profile)
         if ram_mb < recommended:
