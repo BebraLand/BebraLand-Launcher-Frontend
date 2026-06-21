@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +55,20 @@ def write_build_info(version: str, manifest_url: str, update_id: str, server_url
     )
 
 
+def validate_required_server_url(server_url: str) -> None:
+    if not server_url:
+        raise RuntimeError(
+            "BEBRALAND_SERVER_URL is required for release builds. "
+            "Configure the GitHub Actions repository secret before publishing a release."
+        )
+
+    parsed = urlparse(server_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise RuntimeError("BEBRALAND_SERVER_URL must be an absolute http(s) URL for release builds.")
+    if parsed.hostname.lower() in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError("BEBRALAND_SERVER_URL must not point to localhost for release builds.")
+
+
 def main() -> None:
     load_dotenv()
 
@@ -68,6 +83,8 @@ def main() -> None:
     update_id = str(args.update_id or "").strip()
     manifest_url = args.manifest_url.strip()
     server_url = args.server_url.strip()
+    if os.environ.get("BEBRALAND_REQUIRE_SERVER_URL", "").strip().lower() in {"1", "true", "yes"}:
+        validate_required_server_url(server_url)
     write_build_info(version, manifest_url, update_id, server_url)
     print(
         f"Wrote {BUILD_INFO.relative_to(ROOT)}: "
