@@ -14,16 +14,17 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from PySide6.QtCore import QLockFile, QPoint, Property, QObject, QRect, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QCursor, QDesktopServices, QIcon
+from PySide6 import QtWebEngineQuick
 from PySide6.QtQuickWidgets import QQuickWidget
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QVBoxLayout, QWidget
 
 from . import __version__
 from .api import ApiClient, WebSocketApiError, absolute_url
-from .config import DEFAULT_SERVER_URL, build_update_id, launcher_data_dir, platform_id, update_manifest_url
+from .config import DEFAULT_AZURIOM_URL, DEFAULT_SERVER_URL, build_update_id, launcher_data_dir, platform_id, update_manifest_url
 from .runtime import (
     delete_instance,
     install_mod_loader,
@@ -577,6 +578,7 @@ class LauncherWindow(QWidget):
             "twoFactorVisible": self.two_factor_visible,
             "accountName": self.current_username() or "Not logged in",
             "skinBodyUrl": self.skin_body_url(),
+            "skin3dUrl": self.skin3d_url(),
         }
         self.stateChanged.emit()
 
@@ -783,6 +785,12 @@ class LauncherWindow(QWidget):
         if isinstance(avatars, dict):
             return str(avatars.get("body_url") or "")
         return ""
+
+    def skin3d_url(self) -> str:
+        username = self.current_username()
+        if not username:
+            return ""
+        return f"{DEFAULT_AZURIOM_URL.rstrip('/')}/skin3d/3d-api/skin-api/{quote(username, safe='')}"
 
     def cache_skin_profile_assets(self, payload: dict[str, Any], nonce: int = 0) -> dict[str, Any]:
         avatars = payload.get("avatars")
@@ -1617,7 +1625,7 @@ def main() -> None:
         return
     cleanup_update_cache()
     os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
-    os.environ.setdefault("QT_QUICK_BACKEND", "software")
+    QtWebEngineQuick.QtWebEngineQuick.initialize()
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)

@@ -10,7 +10,6 @@ set "DEV_LOG=%CD%\logs\dev-%STAMP%.log"
 set "UV_CACHE_DIR=%CD%\.uv-cache"
 set "UV_PYTHON_INSTALL_DIR=%CD%\.uv-python"
 set "QT_QUICK_CONTROLS_STYLE=Basic"
-set "QT_QUICK_BACKEND=software"
 set "PYTHONFAULTHANDLER=1"
 set "PYTHONUNBUFFERED=1"
 set "QT_LOGGING_RULES=qt.qml.warning=true;qt.quick.warning=true;qt.scenegraph.general=true"
@@ -26,7 +25,7 @@ echo.
     echo UV_CACHE_DIR: %UV_CACHE_DIR%
     echo UV_PYTHON_INSTALL_DIR: %UV_PYTHON_INSTALL_DIR%
     echo QT_QUICK_CONTROLS_STYLE: %QT_QUICK_CONTROLS_STYLE%
-    echo QT_QUICK_BACKEND: %QT_QUICK_BACKEND%
+    echo QT_QUICK_BACKEND: default (GPU)
     echo.
 ) > "%DEV_LOG%"
 

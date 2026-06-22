@@ -40,7 +40,7 @@ a = Analysis(
         ('background_for_launcher.jpg', '.'),
         ('resources', 'resources'),
     ],
-    hiddenimports=['ssl', '_ssl', '_hashlib'],
+    hiddenimports=['ssl', '_ssl', '_hashlib', 'PySide6.QtWebEngineQuick'],
     hookspath=['hooks'],
     hooksconfig={},
     runtime_hooks=[],

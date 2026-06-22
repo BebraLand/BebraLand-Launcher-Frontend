@@ -201,6 +201,7 @@ Do not just mark an old GitHub Release as latest for rollback. Its `update_id` i
 ## Auth
 
 Azuriom auth works through backend. Backend Azuriom URL lives in backend `.env` as `AZURIOM_URL=...`.
+The launcher uses `BEBRALAND_AZURIOM_URL` for its embedded Skin3D viewer (default: `https://bebraland.auuruum.me`).
 
 Account page supports Azuriom Skin API:
 

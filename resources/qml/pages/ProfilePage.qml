@@ -1,4 +1,5 @@
 import QtQuick
+import QtWebEngine
 import "../components"
 
 Item {
@@ -6,6 +7,7 @@ Item {
 
     property var state: ({})
     property string skinUrl: state.skinBodyUrl || ""
+    property string skin3dUrl: state.skin3dUrl || ""
     property string assetsUrl: state.assetsUrl || ""
     signal navigate(string page)
 
@@ -105,49 +107,26 @@ Item {
                     color: "#0D1110"
                     clip: true
 
-                    Rectangle {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        height: 88
-                        gradient: Gradient {
-                            GradientStop { position: 0.00; color: "#00101412" }
-                            GradientStop { position: 1.00; color: "#70008C45" }
-                        }
-                    }
-
-                    Canvas {
+                    WebEngineView {
+                        id: skinViewer
                         anchors.fill: parent
-                        onPaint: {
-                            var ctx = getContext("2d")
-                            ctx.clearRect(0, 0, width, height)
-                            ctx.strokeStyle = theme.primary
-                            ctx.lineWidth = 2
-                            ctx.beginPath()
-                            ctx.moveTo(0, height - 80)
-                            ctx.lineTo(width * 0.18, height - 38)
-                            ctx.lineTo(width * 0.82, height - 38)
-                            ctx.lineTo(width, height - 80)
-                            ctx.stroke()
-                        }
-                        onWidthChanged: requestPaint()
-                        onHeightChanged: requestPaint()
-                    }
+                        visible: root.skin3dUrl !== ""
+                        backgroundColor: "#0D1110"
+                        url: root.skin3dUrl === "" ? "" : root.skin3dUrl + "/" + Math.max(1, Math.round(width)) + "/" + Math.max(1, Math.round(height))
 
-                    Image {
-                        visible: root.skinUrl !== ""
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 26
-                        height: Math.min(282, parent.height - 18)
-                        source: root.skinUrl
-                        fillMode: Image.PreserveAspectFit
-                        smooth: false
-                        cache: false
+                        onLoadingChanged: function(loadRequest) {
+                            if (loadRequest.status === WebEngineView.LoadSucceededStatus) {
+                                skinViewer.runJavaScript(
+                                    "document.documentElement.style.background='transparent';" +
+                                    "document.body.style.cssText='margin:0;overflow:hidden;background:transparent';" +
+                                    "document.getElementById('skin_container').style.display='block';"
+                                )
+                            }
+                        }
                     }
 
                     SharpImage {
-                        visible: root.skinUrl === ""
+                        visible: root.skin3dUrl === ""
                         anchors.centerIn: parent
                         width: 118
                         height: 118

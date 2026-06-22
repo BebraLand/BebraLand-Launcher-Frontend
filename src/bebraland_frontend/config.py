@@ -49,6 +49,10 @@ DEFAULT_SERVER_URL = (
     or getattr(build_info, "SERVER_URL", "")
     or "http://127.0.0.1:8765"
 ).strip()
+DEFAULT_AZURIOM_URL = (
+    os.environ.get("BEBRALAND_AZURIOM_URL")
+    or "https://bebraland.auuruum.me"
+).strip()
 DEFAULT_UPDATE_MANIFEST_URL = (
     os.environ.get("BEBRALAND_UPDATE_MANIFEST_URL")
     or getattr(build_info, "UPDATE_MANIFEST_URL", "")

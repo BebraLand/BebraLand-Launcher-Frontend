@@ -2,8 +2,9 @@
 
 PyInstaller's stock PySide6 QtQml hook copies every QML module installed by
 PySide6. That includes WebEngine, PDF, 3D, multimedia, and every Qt Quick
-Controls style. The launcher only imports QtQuick and QtQuick.Controls and
-explicitly selects the lightweight Basic style at startup.
+Controls style. The launcher imports QtQuick, QtQuick.Controls, and the
+Skin3D viewer through QtWebEngine, and explicitly selects the lightweight
+Basic style at startup.
 """
 
 from pathlib import Path, PurePath
@@ -28,6 +29,7 @@ REQUIRED_QML_MODULES = (
     ("QtQuick/Controls/Basic", True),
     ("QtQuick/Controls/Basic/impl", True),
     ("QtQuick/Controls/impl", True),
+    ("QtWebEngine", True),
 )
 
 for module, recursive in REQUIRED_QML_MODULES:
